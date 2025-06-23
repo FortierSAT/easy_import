@@ -1,0 +1,92 @@
+/* Toolbar */
+.worklist-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+.worklist-toolbar h1 {
+  margin: 0;
+  font-size: 1.75rem;
+}
+.worklist-toolbar input {
+  padding: 0.5rem 1rem;
+  font-size: 1rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+/* Table container for horizontal scroll on small screens */
+.table-container {
+  overflow-x: auto;
+  background: white;
+  border: 1px solid #e1e1e1;
+  border-radius: 6px;
+}
+
+/* Base table styling */
+#worklist-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+#worklist-table th,
+#worklist-table td {
+  padding: 0.75rem 0.5rem;
+  border-bottom: 1px solid #ececec;
+  min-width: 100px;
+}
+#worklist-table th {
+  background: #fafafa;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  text-transform: uppercase;
+  font-size: 0.85rem;
+  letter-spacing: 0.03em;
+}
+
+/* Zebra striping */
+#worklist-table tbody tr:nth-child(even) {
+  background-color: #fcfcfc;
+}
+
+/* Row hover */
+#worklist-table tbody tr:hover {
+  background-color: #f0f8ff;
+}
+
+/* Missing-field highlight */
+#worklist-table td.missing {
+  background-color: #ffeceb;
+}
+.detail-form .grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 1rem;
+}
+.detail-form .form-group {
+  display: flex;
+  flex-direction: column;
+}
+.detail-form .form-group.missing input,
+.detail-form .form-group.missing select {
+  border-color: #e74c3c;
+  background-color: #fdecea;
+}
+.form-actions {
+  margin-top: 1.5rem;
+}
+
+/* Resolve button */
+.btn-resolve {
+  display: inline-block;
+  padding: 0.3rem 0.6rem;
+  background-color: #007bff;
+  color: white;
+  text-decoration: none;
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+.btn-resolve:hover {
+  background-color: #0056b3;
+}
