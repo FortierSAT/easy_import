@@ -112,7 +112,7 @@ def worklist_detail(ccfid):
         return redirect(url_for("web.worklist"))
 
     if request.method == "POST":
-        # Editable fields
+        # 1) Apply any field edits:
         editable = [
             "company_name","company_code","first_name","last_name",
             "collection_site","collection_site_id","location",
@@ -123,13 +123,9 @@ def worklist_detail(ccfid):
             if f in request.form:
                 val = request.form[f].strip()
                 setattr(item, f, val or None)
-
-        # Mark reviewed, update timestamp
-        item.reviewed           = True
-        item.uploaded_timestamp = datetime.datetime.utcnow()
         db.commit()
 
-        # Build record with correct keys for main mapping
+        # 2) Build the Zoho payload:
         record = {
             "CCFID": item.ccfid,
             "First_Name": item.first_name,
@@ -147,55 +143,55 @@ def worklist_detail(ccfid):
             "Test_Result": item.test_result,
             "Test_Type": item.test_type,
             "Regulation": item.regulation,
+            "Name": str(item.ccfid),
         }
-
-        # Prepare lookup maps
-        company_code_to_recordid = {
+        company_map = {
             c.account_code: c.account_id.replace("zcrm_", "")
             for c in db.query(Company).all()
         }
-        site_id_to_recordid = {
+        site_map = {
             s.Collection_Site_ID: s.Record_id.replace("zcrm_", "")
             for s in db.query(CollectionSite).all()
         }
-        lab_name_to_recordid = {
+        lab_map = {
             l.Laboratory: l.Record_id.replace("zcrm_", "")
             for l in db.query(Laboratory).all()
         }
 
-        # Attach lookup IDs and convert to Zoho API names
-        payload = _attach_lookup_ids(
-            [record],
-            company_code_to_recordid,
-            site_id_to_recordid,
-            lab_name_to_recordid
-        )
+        payload = _attach_lookup_ids([record], company_map, site_map, lab_map)
 
-        # Add "Name" field to the Zoho payload (if not already done by your _attach_lookup_ids)
-        payload[0]["Name"] = str(item.ccfid)
+        # ISO‐format any date fields
+        for df in ("Collection_Date", "MRO_Received"):
+            v = payload[0].get(df)
+            if isinstance(v, (datetime.date, datetime.datetime)):
+                payload[0][df] = v.isoformat()
 
-        # Date serialization if needed (Zoho expects ISO strings)
-        for date_field in ["Collection_Date", "MRO_Received"]:
-            if date_field in payload[0] and isinstance(payload[0][date_field], (datetime.date, datetime.datetime)):
-                payload[0][date_field] = payload[0][date_field].isoformat()
-
+        # 3) Push to Zoho and only mark reviewed on success:
         try:
-            good_ccfids = push_records(payload)
-            if str(ccfid) in good_ccfids:
+            accepted = push_records(payload)
+            if ccfid in accepted:
+                # Mark reviewed *now* that it really succeeded
+                item.reviewed           = True
+                item.uploaded_timestamp = datetime.datetime.utcnow()
+                # Record in uploaded_ccfid
                 db.execute(
-                    text("INSERT INTO uploaded_ccfid (ccfid, uploaded_timestamp) VALUES (:ccfid, :uploaded_timestamp)"),
-                    {"ccfid": ccfid, "uploaded_timestamp": datetime.datetime.utcnow()}
+                    text(
+                        "INSERT INTO uploaded_ccfid (ccfid, uploaded_timestamp) "
+                        "VALUES (:ccfid, :ts)"
+                    ),
+                    {"ccfid": ccfid, "ts": item.uploaded_timestamp}
                 )
                 db.commit()
                 flash(f"{ccfid} successfully sent to CRM!", "success")
             else:
-                flash(f"Zoho did not accept the record. Check logs.", "error")
+                # Leave reviewed=False so it stays visible for retry
+                flash("Zoho did not accept the record. Check logs; it remains in your worklist.", "error")
         except Exception as e:
             flash(f"Error sending to CRM: {e}", "error")
 
         return redirect(url_for("web.worklist"))
 
-    # GET: build site autocomplete data
+    # GET: build site autocomplete data as before
     rows = (
         db.query(
             CollectionSite.Collection_Site,
@@ -208,7 +204,7 @@ def worklist_detail(ccfid):
         .all()
     )
     sites    = [r[0] for r in rows]
-    site_map = {  r[0]: r[1] for r in rows }
+    site_map = {r[0]: r[1] for r in rows}
 
     return render_template(
         "worklist_detail.html",
@@ -216,3 +212,4 @@ def worklist_detail(ccfid):
         sites=sites,
         site_map=site_map
     )
+

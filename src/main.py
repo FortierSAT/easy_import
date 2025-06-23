@@ -16,16 +16,21 @@ from src.normalize.i3screen import normalize_i3screen
 from src.utils       import is_complete
 from src.services.zoho      import push_records, sync_collection_sites_to_crm, _attach_lookup_ids
 
+DOWNLOAD_ROOT = os.environ.get(
+    "DOWNLOAD_DIR",
+    os.path.join(os.path.dirname(__file__), "downloads")
+)
+os.makedirs(DOWNLOAD_ROOT, exist_ok=True)
+
 DOWNLOAD_PATHS = {
-    "crl": "src/downloads/crl_summary_report.csv",
-    "i3":  "src/downloads/i3screen_export.csv",
+    "crl": os.path.join(DOWNLOAD_ROOT, "crl_summary_report.csv"),
+    "i3":  os.path.join(DOWNLOAD_ROOT, "i3screen_export.csv"),
 }
 
 SOURCES = [
-    ("crl", scrape_crl, norm_crl),
-    ("i3",  scrape_i3,  normalize_i3screen),
+    ("crl", scrape_crl,       norm_crl),
+    ("i3",  scrape_i3,        normalize_i3screen),
 ]
-
 
 def parse_args():
     p = argparse.ArgumentParser(description="Run the import pipeline")
