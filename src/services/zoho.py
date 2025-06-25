@@ -200,3 +200,41 @@ def sync_collection_sites_to_crm(site_df: pd.DataFrame) -> dict[str, str]:
     all_sites = db.query(CollectionSite).all()
     db.close()
     return {s.Collection_Site_ID: s.Record_id for s in all_sites}
+
+def fetch_uploaded_ccfids():
+    """
+    Fetch all CCFIDs from Zoho for the given module.
+    Assumes 'Name' is the field containing the CCFID.
+    Handles pagination (Zoho API returns max 200 records per call).
+    Returns a list of CCFIDs as strings.
+    """
+    token = _get_access_token()
+    url   = f"{ZOHO_API_BASE}/crm/v2/Results_2025"
+    headers = {
+        "Authorization": f"Zoho-oauthtoken {token}",
+        "Content-Type":  "application/json"
+    }
+
+    all_ccfids = []
+    page = 1
+    per_page = 200  # Zoho max is 200
+
+    while True:
+        params = {
+            "page": page,
+            "per_page": per_page,
+            "fields": "Name"  # Only fetch Name/CCFID for efficiency
+        }
+        resp = requests.get(url, headers=headers, params=params)
+        resp.raise_for_status()
+        data = resp.json().get("data", [])
+        if not data:
+            break
+        # Extract the "Name" field (your CCFID) from each record
+        all_ccfids.extend(str(rec.get("Name", "")) for rec in data if rec.get("Name"))
+        if len(data) < per_page:
+            break
+        page += 1
+
+    logger.info(f"Fetched {len(all_ccfids)} CCFIDs from Zoho.")
+    return all_ccfids

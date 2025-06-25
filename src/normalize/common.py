@@ -20,7 +20,8 @@ REASON_MAP = {
     "pre-assignment": "Pre-Assignment",
     "company fit for duty": "Return To Duty",
     "cdl recertification": "CDL Recertification",
-    "re-certification": "Recertification"
+    "re-certification": "Recertification",
+    "recertification": "Recertification"
 }
 
 RESULT_MAP = {
@@ -37,8 +38,8 @@ RESULT_MAP = {
     "lab reject": "Lab Reject",
     "pending": "",
     "not reported": "",
-    "received at lab": "REMOVE",
-    "sent to lab": "REMOVE"
+    "received at lab": "",
+    "sent to lab": ""
 }
 
 MASTER_COLUMNS = [

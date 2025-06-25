@@ -1,6 +1,7 @@
 # src/web/routes.py
 
 import io
+import os
 import datetime
 import pandas as pd
 from flask import Blueprint, render_template, request, redirect, url_for, flash
@@ -12,8 +13,12 @@ from src.scrapers.crl import scrape_crl
 from src.scrapers.i3  import scrape_i3
 from src.normalize.crl           import normalize as norm_crl
 from src.normalize.i3screen      import normalize_i3screen
+from src.normalize.escreen       import normalize_escreen
+from src.run_escreen import process_escreen_upload
 from src.utils        import is_complete
 from src.services.zoho import push_records, _attach_lookup_ids
+from werkzeug.utils import secure_filename
+
 
 bp = Blueprint("web", __name__)
 
@@ -27,68 +32,7 @@ def serialize_for_json(record):
 @bp.route("/")
 def index():
     # root → upload
-    return redirect(url_for("web.upload"))
-
-@bp.route("/upload", methods=["GET", "POST"])
-def upload():
-    """
-    GET: show form to pick source & CSV
-    POST: normalize and stage any incomplete rows
-    """
-    if request.method == "POST":
-        source = request.form.get("source")
-        file   = request.files.get("file")
-
-        # 1) validate
-        if source not in ("crl", "i3"):
-            flash("Please select CRL or i3 as source.", "error")
-            return redirect(url_for("web.upload"))
-        if not file or not file.filename.lower().endswith(".csv"):
-            flash("Please upload a CSV file.", "error")
-            return redirect(url_for("web.upload"))
-
-        # 2) load into DataFrame
-        try:
-            text_io = io.StringIO(file.stream.read().decode("utf-8"))
-            df = pd.read_csv(text_io)
-        except Exception as e:
-            flash(f"Failed to parse CSV: {e}", "error")
-            return redirect(url_for("web.upload"))
-
-        # 3) normalize
-        clean = norm_crl(df) if source == "crl" else normalize_i3screen(df)
-
-        # 4) pick out incomplete
-        incomplete = [r for r in clean.to_dict(orient="records") if not is_complete(r)]
-        flashed = 0
-        if incomplete:
-            db  = SessionLocal()
-            now = datetime.datetime.utcnow()
-
-            # stamp and filter duplicates in staging
-            existing = {c[0] for c in db.query(WorklistStaging.ccfid).all()}
-            to_stage = []
-            for rec in incomplete:
-                ccfid = rec["CCFID"]
-                if ccfid in existing:
-                    continue
-                rec["uploaded_timestamp"] = now
-                rec["reviewed"]           = False
-                to_stage.append(rec)
-                existing.add(ccfid)
-
-            if to_stage:
-                # bulk_insert_mappings expects dict keys exactly matching
-                # your WorklistStaging columns
-                db.bulk_insert_mappings(WorklistStaging, to_stage)
-                db.commit()
-            flashed = len(to_stage)
-
-        flash(f"Staged {flashed} incomplete records for review.", "success")
-        return redirect(url_for("web.worklist"))
-
-    return render_template("upload.html")
-
+    return redirect(url_for("web.upload_escreen"))
 
 @bp.route("/worklist")
 def worklist():
@@ -213,3 +157,27 @@ def worklist_detail(ccfid):
         site_map=site_map
     )
 
+UPLOAD_FOLDER = "uploads"
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+@bp.route("/upload_escreen", methods=["GET", "POST"])
+def upload_escreen():
+    if request.method == "POST":
+        if "file" not in request.files:
+            flash("No file part")
+            return redirect(request.url)
+        file = request.files["file"]
+        if file.filename == "":
+            flash("No selected file")
+            return redirect(request.url)
+        if file:
+            filename = secure_filename(file.filename)
+            filepath = os.path.join(UPLOAD_FOLDER, filename)
+            file.save(filepath)
+            results = process_escreen_upload(filepath)
+            msg = f"Upload complete! {results['uploaded']} sent to CRM, {results['inserted']} staged for review."
+            if results["errors"]:
+                msg += f" Errors: {'; '.join(results['errors'])}"
+            flash(msg)
+            return redirect(url_for("web.upload_escreen"))
+    return render_template("upload_escreen.html")

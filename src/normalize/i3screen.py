@@ -90,6 +90,7 @@ def normalize_i3screen(df: pd.DataFrame) -> pd.DataFrame:
     # 6) Location: only keep when Code == "A1310"
     df["Location"] = df.get("Location", "").fillna("").astype(str)
     df.loc[df["Code"] != "A1310", "Location"] = "None"
+    df.loc[df["Location"] == "TCW INC FSAT", "Location"] = None  # <-- null out TCW INC FSAT
 
     # 7) Reorder to MASTER_COLUMNS schema & fill blanks
     result = df.reindex(columns=MASTER_COLUMNS, fill_value="").fillna("")
