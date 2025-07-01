@@ -16,6 +16,9 @@ from src.normalize.i3screen import normalize_i3screen
 from src.utils       import is_complete
 from src.services.zoho      import push_records, sync_collection_sites_to_crm, _attach_lookup_ids
 
+if os.system("playwright install chromium") != 0:
+    print("Playwright browser install failed!")
+
 DOWNLOAD_ROOT = os.environ.get(
     "DOWNLOAD_DIR",
     os.path.join(os.path.dirname(__file__), "downloads")
