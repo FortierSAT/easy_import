@@ -9,8 +9,6 @@ const DOWNLOAD_DIR = path.resolve(__dirname, '..', 'downloads');
 if (!fs.existsSync(DOWNLOAD_DIR)) fs.mkdirSync(DOWNLOAD_DIR, { recursive: true });
 
 const wait = ms => new Promise(r => setTimeout(r, ms));
-
-// Pull credentials from env for safety
 const USERNAME = process.env.ESCREEN_USERNAME || 'connor.beasley';
 const PASSWORD = process.env.ESCREEN_PASSWORD || 'Punky3!Brewster';
 
@@ -18,14 +16,30 @@ function logStep(step) {
   console.log('\n====', step, '====');
 }
 
-async function saveDebug(page, name) {
+// Always logs and writes debug files
+async function saveDebug(pageOrFrame, name, prefix = 'debug') {
   try {
-    const html = await page.content();
-    fs.writeFileSync(path.join(DOWNLOAD_DIR, `${name}.html`), html);
-    await page.screenshot({ path: path.join(DOWNLOAD_DIR, `${name}.png`) });
-    console.error(`[${name}] Saved HTML and screenshot for debugging.`);
+    const timestamp = (new Date()).toISOString().replace(/[:\.]/g, '-');
+    const htmlPath = path.join(DOWNLOAD_DIR, `${prefix}_${name}_${timestamp}.html`);
+    const pngPath = path.join(DOWNLOAD_DIR, `${prefix}_${name}_${timestamp}.png`);
+
+    let html;
+    try {
+      html = await pageOrFrame.content();
+      fs.writeFileSync(htmlPath, html, 'utf8');
+      console.error(`[${name}] Saved HTML to: ${htmlPath}`);
+    } catch (err) {
+      console.error(`[${name}] Could not save HTML:`, err);
+    }
+
+    try {
+      await pageOrFrame.screenshot({ path: pngPath, fullPage: true });
+      console.error(`[${name}] Saved screenshot to: ${pngPath}`);
+    } catch (err) {
+      console.error(`[${name}] Could not save screenshot:`, err);
+    }
   } catch (err) {
-    console.error(`[${name}] Could not save debug info:`, err);
+    console.error(`[${name}] saveDebug() failed:`, err);
   }
 }
 
@@ -115,7 +129,9 @@ async function saveDebug(page, name) {
         input.dispatchEvent(new Event('change', { bubbles: true }));
       }, startDate);
     } catch (e) {
-      await saveDebug(page, 'fail_start_date');
+      // Save both the frame and page for maximum debugging
+      await saveDebug(page, 'fail_start_date_page', 'fail');
+      await saveDebug(frame, 'fail_start_date_frame', 'fail');
       throw e;
     }
     console.log('Set start date to:', startDate);
@@ -137,7 +153,8 @@ async function saveDebug(page, name) {
         if (el) el.click();
       });
     } catch (e) {
-      await saveDebug(page, 'fail_download');
+      await saveDebug(page, 'fail_download_page', 'fail');
+      await saveDebug(frame, 'fail_download_frame', 'fail');
       throw e;
     }
 
@@ -148,7 +165,8 @@ async function saveDebug(page, name) {
   } catch (err) {
     console.error('\n======= SCRIPT FAILED =======');
     console.error(err);
-    if (page) await saveDebug(page, 'final_failure');
+    if (page) await saveDebug(page, 'final_failure_page', 'fail');
+    // browser may be undefined on launch fail, so protect the close
     process.exit(1);
   } finally {
     if (browser) await browser.close();
