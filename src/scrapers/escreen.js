@@ -92,7 +92,14 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   const startDate = `${mm}/${dd}/${yyyy}`;
 
   console.log("Waiting for start date input...");
-  await frame.waitForSelector('input#txtStart', { timeout: 30000 });
+  try {
+    await frame.waitForSelector('input#txtStart', { timeout: 30000 });
+  } catch (e) {
+    // Log the frame HTML so you can debug what's really going on
+    const content = await frame.content();
+    console.error("iframe HTML before failure:\n", content);
+    throw e; // re-throw error so your Python wrapper sees it
+  }
   await frame.evaluate((date) => {
     const input = document.querySelector('input#txtStart');
     input.value = date;
