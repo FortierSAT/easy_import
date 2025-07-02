@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.sqlite3
+*.db
+*.log
+*.zip
+node_modules/
+src/scrapers/node_modules/
+.vscode/
+.venv/
+.env
+.git
+.gitignore
+.DS_Store
