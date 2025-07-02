@@ -21,16 +21,17 @@ from src.services.zoho      import push_records, sync_collection_sites_to_crm, _
 
 import subprocess
 
-def escreen_scraper():
-    # ...your existing code...
-    # Install the Chrome browser for Puppeteer
-    subprocess.run(["npx", "puppeteer", "browsers", "install", "chrome"], check=True)
-    # Run your script
-    subprocess.run(["node", escreen_js], check=True)
-    return DOWNLOAD_PATHS["escreen"]
+# Install Playwright browsers (Python, just in case)
+try:
+    subprocess.run(["playwright", "install", "chromium"], check=True)
+except Exception as e:
+    print("Playwright install failed:", e)
 
-if os.system("playwright install chromium") != 0:
-    print("Playwright browser install failed!")
+# Install Chrome for Puppeteer (Node.js)
+try:
+    subprocess.run(["npx", "puppeteer", "browsers", "install", "chrome"], check=True)
+except Exception as e:
+    print("Puppeteer browser install failed:", e)
 
 # --- Config ---
 DOWNLOAD_ROOT = os.environ.get(
