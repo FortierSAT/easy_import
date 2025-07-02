@@ -9,3 +9,5 @@ pytest>=7.0
 rapidfuzz
 openpyxl
 gunicorn
+xlrd>=2.0
+python-slugify

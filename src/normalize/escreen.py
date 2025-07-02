@@ -55,11 +55,12 @@ def normalize_escreen(df: pd.DataFrame) -> pd.DataFrame:
     test_type_col = find_col(["Test Type"], cols)
     coll_date_col = find_col(["Collection Date/Time", "Collection Date"], cols)
     mro_date_col = find_col(["Final Verification Date/Time", "MRO_Received"], cols)
+    ba_quant_col = find_col(["BA Quant", "baValue"], cols)
 
     # 1) Names, IDs, CCFID
     df["First_Name"], df["Last_Name"] = zip(*df[donor_col].map(parse_name))
-    df["CCFID"] = df.get(coc_col, "").fillna("")
-    df["Primary_ID"] = df.get(ssn_col, "").fillna("")
+    df["CCFID"] = df[coc_col].fillna("")
+    df["Primary_ID"] = df[ssn_col].fillna("")
 
     # 2) Company: Prefer Cost Center if present and not blank/NaN, else Client
     def choose_company(row):
@@ -75,21 +76,26 @@ def normalize_escreen(df: pd.DataFrame) -> pd.DataFrame:
 
     # 3) Dates
     df["Collection_Date"] = (
-        df.get(coll_date_col, "")
+        df[coll_date_col]
         .apply(safe_date_parse)
         .apply(to_zoho_date)
     )
     df["MRO_Received"] = (
-        df.get(mro_date_col, "")
+        df[mro_date_col]
         .apply(safe_date_parse)
         .apply(to_zoho_date)
     )
 
     # 4) Result, reason, regulation, type
-    df["Test_Result"] = df.get(result_col, "").apply(map_result)
+    df["Test_Result"] = df[result_col].apply(map_result)
     df = df[df["Test_Result"] != ""].copy()
-    df["Test_Reason"] = df.get(reason_col, "").apply(map_reason)
-    df["Regulation"] = df.get(regulation_col, "").apply(map_regulation)
+    df["Test_Reason"] = df[reason_col].apply(map_reason)
+    df["Regulation"] = df[regulation_col].apply(map_regulation)
+
+    # -- BA Quant: If == "0", set Test_Result to "Negative"
+    if ba_quant_col in df.columns:
+        zero_mask = df[ba_quant_col].astype(str).str.strip().replace({"nan": ""}) == "0"
+        df.loc[zero_mask, "Test_Result"] = "Negative"
 
     # 5) Test_Type and Laboratory
     def escreen_test_type(val):
@@ -103,10 +109,9 @@ def normalize_escreen(df: pd.DataFrame) -> pd.DataFrame:
         if "ebt" in v or "breath" in v:
             return "Alcohol Breath Test"
         return "Other"
-    df["Test_Type"] = df.get(test_type_col, "").apply(escreen_test_type)
-    df["Laboratory"] = df.get(test_type_col, "").apply(map_laboratory)
+    df["Test_Type"] = df[test_type_col].apply(escreen_test_type)
+    df["Laboratory"] = df[test_type_col].apply(map_laboratory)
 
-    df.loc[df["Test_Type"] == "Alcohol Breath Test", "Test_Result"] = ""
     df.loc[df["Test_Type"] == "Alcohol Breath Test", "Laboratory"] = ""
     df.loc[df["Test_Type"] == "POCT Urine Test", "Laboratory"] = ""
 

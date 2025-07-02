@@ -39,6 +39,7 @@ RESULT_MAP = {
     "pending": "",
     "not reported": "",
     "received at lab": "",
+    "pending ccf": "",
     "sent to lab": ""
 }
 

@@ -4,3 +4,7 @@ outputs/
 *.pyc
 .DS_Store
 downloads/
+node_modules/
+.venv
+zip_project.sh
+package-lock.json
