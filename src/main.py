@@ -19,6 +19,16 @@ from src.normalize.escreen  import normalize_escreen
 from src.utils       import is_complete
 from src.services.zoho      import push_records, sync_collection_sites_to_crm, _attach_lookup_ids
 
+import subprocess
+
+def escreen_scraper():
+    # ...your existing code...
+    # Install the Chrome browser for Puppeteer
+    subprocess.run(["npx", "puppeteer", "browsers", "install", "chrome"], check=True)
+    # Run your script
+    subprocess.run(["node", escreen_js], check=True)
+    return DOWNLOAD_PATHS["escreen"]
+
 if os.system("playwright install chromium") != 0:
     print("Playwright browser install failed!")
 
