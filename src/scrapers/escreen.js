@@ -92,19 +92,13 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   const startDate = `${mm}/${dd}/${yyyy}`;
 
   console.log("Waiting for start date input...");
-  try {
-    await frame.waitForSelector('input#txtStart', { timeout: 30000 });
-    await frame.evaluate((date) => {
-      const input = document.querySelector('input#txtStart');
-      input.value = date;
-      input.dispatchEvent(new Event('change', { bubbles: true }));
-    }, startDate);
-    console.log('Set start date to:', startDate);
-  } catch (e) {
-    console.error("Failed waiting for input#txtStart, taking screenshot...");
-    await frame.screenshot({ path: "/tmp/puppeteer-fail-txtStart.png" });
-    throw e;
-  }
+  await frame.waitForSelector('input#txtStart', { timeout: 30000 });
+  await frame.evaluate((date) => {
+    const input = document.querySelector('input#txtStart');
+    input.value = date;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  }, startDate);
+  console.log('Set start date to:', startDate);
 
   // Click "Run"
   console.log("Waiting for Run button...");
