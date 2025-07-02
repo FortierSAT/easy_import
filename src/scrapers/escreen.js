@@ -10,125 +10,147 @@ if (!fs.existsSync(DOWNLOAD_DIR)) fs.mkdirSync(DOWNLOAD_DIR, { recursive: true }
 
 const wait = ms => new Promise(r => setTimeout(r, ms));
 
-(async () => {
-  if (!fs.existsSync(DOWNLOAD_DIR)) fs.mkdirSync(DOWNLOAD_DIR);
+// Pull credentials from env for safety
+const USERNAME = process.env.ESCREEN_USERNAME || 'connor.beasley';
+const PASSWORD = process.env.ESCREEN_PASSWORD || 'Punky3!Brewster';
 
-  const browser = await puppeteer.launch({
-    headless: true,
-    defaultViewport: null,
-    args: [
-      '--start-maximized',
-      '--disable-web-security',
-      '--no-sandbox',
-    ]
-  });
+function logStep(step) {
+  console.log('\n====', step, '====');
+}
 
-  const page = await browser.newPage();
-
-  // Enable downloads to DOWNLOAD_DIR
-  const client = await page.target().createCDPSession();
-  await client.send('Page.setDownloadBehavior', {
-    behavior: 'allow',
-    downloadPath: DOWNLOAD_DIR,
-  });
-
-  // 1. Go to login page
-  console.log("Navigating to login page...");
-  await page.goto('https://www.myescreen.com/', { waitUntil: 'networkidle2' });
-
-  // 2. Fill in Username and submit
-  console.log("Waiting for username input...");
-  await page.waitForSelector('input#signInName', { timeout: 30000 });
-  await page.type('input#signInName', 'connor.beasley');
-  await page.keyboard.press('Enter');
-  console.log('Username submitted.');
-
-  // 3. Wait for Password input, then fill and submit
-  console.log("Waiting for password input...");
-  await page.waitForSelector('input[type="password"]', { timeout: 30000 });
-  await page.type('input[type="password"]', 'Punky3!Brewster');
-  await page.keyboard.press('Enter');
-  console.log('Password submitted.');
-
-  // 4. Wait for dashboard to load and click "Reports"
-  await wait(7000); // let dashboard settle
-  console.log("Clicking Reports...");
-  await page.evaluate(() => {
-    const el = Array.from(document.querySelectorAll('*')).find(
-      e => e.innerText && e.innerText.trim() === 'Reports'
-    );
-    if (el) el.click();
-  });
-  console.log('Clicked Reports.');
-
-  // 5. Click "Drug Test Summary Report" link
-  await wait(4000);
-  console.log("Clicking Drug Test Summary Report...");
-  await page.evaluate(() => {
-    const el = Array.from(document.querySelectorAll('a')).find(
-      e => e.innerText && e.innerText.includes('Drug Test Summary Report')
-    );
-    if (el) el.click();
-  });
-  console.log('Clicked Drug Test Summary Report.');
-
-  // 6. Wait for iframe and interact inside
-  console.log("Waiting for iframe...");
-  await page.waitForSelector('iframe[name="mainFrame"]', { timeout: 30000 });
-  const frameHandle = await page.$('iframe[name="mainFrame"]');
-  const frame = await frameHandle.contentFrame();
-
-  console.log("Waiting for View All button...");
-  await frame.waitForSelector('input#btnViewAll', { timeout: 30000 });
-  await frame.click('input#btnViewAll');
-  console.log('Clicked View All.');
-
-  // === Set start date to 20 days before today (format MM/DD/YYYY) ===
-  const minus20 = new Date();
-  minus20.setDate(minus20.getDate() - 20);
-  const mm = String(minus20.getMonth() + 1).padStart(2, '0');
-  const dd = String(minus20.getDate()).padStart(2, '0');
-  const yyyy = minus20.getFullYear();
-  const startDate = `${mm}/${dd}/${yyyy}`;
-
-  console.log("Waiting for start date input...");
+async function saveDebug(page, name) {
   try {
-    await frame.waitForSelector('input#txtStart', { timeout: 30000 });
-  } catch (e) {
-    // Log the frame HTML so you can debug what's really going on
-    const content = await frame.content();
-    console.error("iframe HTML before failure:\n", content);
-    throw e; // re-throw error so your Python wrapper sees it
+    const html = await page.content();
+    fs.writeFileSync(path.join(DOWNLOAD_DIR, `${name}.html`), html);
+    await page.screenshot({ path: path.join(DOWNLOAD_DIR, `${name}.png`) });
+    console.error(`[${name}] Saved HTML and screenshot for debugging.`);
+  } catch (err) {
+    console.error(`[${name}] Could not save debug info:`, err);
   }
-  await frame.evaluate((date) => {
-    const input = document.querySelector('input#txtStart');
-    input.value = date;
-    input.dispatchEvent(new Event('change', { bubbles: true }));
-  }, startDate);
-  console.log('Set start date to:', startDate);
+}
 
-  // Click "Run"
-  console.log("Waiting for Run button...");
-  await frame.waitForSelector('input#cmdRun', { timeout: 30000 });
-  await frame.click('input#cmdRun');
-  console.log('Clicked Run.');
+(async () => {
+  let browser, page;
+  try {
+    logStep('Launching browser');
+    browser = await puppeteer.launch({
+      headless: true,
+      defaultViewport: null,
+      args: ['--start-maximized', '--disable-web-security', '--no-sandbox']
+    });
 
-  // 9. Click "Download"
-  await wait(10000);
-  console.log("Waiting for Download button...");
-  await frame.waitForSelector('.download-title', { timeout: 30000 });
-  await frame.evaluate(() => {
-    const el = Array.from(document.querySelectorAll('.download-title')).find(
-      e => e.innerText && e.innerText.trim() === 'Download'
-    );
-    if (el) el.click();
-  });
-  console.log('Clicked Download.');
+    page = await browser.newPage();
 
-  // 10. Wait for the file to finish downloading
-  await wait(15000);
+    // Set up downloads
+    const client = await page.target().createCDPSession();
+    await client.send('Page.setDownloadBehavior', {
+      behavior: 'allow',
+      downloadPath: DOWNLOAD_DIR,
+    });
 
-  console.log(`✅ Finished! Check your downloads folder: ${DOWNLOAD_DIR}`);
+    // 1. Login page
+    logStep('Navigating to login page');
+    await page.goto('https://www.myescreen.com/', { waitUntil: 'networkidle2' });
 
-  await browser.close();
+    // 2. Username
+    logStep('Filling username');
+    await page.waitForSelector('input#signInName', { timeout: 30000 });
+    await page.type('input#signInName', USERNAME);
+    await page.keyboard.press('Enter');
+    logStep('Username submitted');
+
+    // 3. Password
+    logStep('Filling password');
+    await page.waitForSelector('input[type="password"]', { timeout: 30000 });
+    await page.type('input[type="password"]', PASSWORD);
+    await page.keyboard.press('Enter');
+    logStep('Password submitted');
+
+    await wait(7000);
+
+    // 4. Click "Reports"
+    logStep('Clicking Reports');
+    await page.evaluate(() => {
+      const el = Array.from(document.querySelectorAll('*')).find(
+        e => e.innerText && e.innerText.trim() === 'Reports'
+      );
+      if (el) el.click();
+    });
+    await wait(1000);
+
+    // 5. Click "Drug Test Summary Report"
+    logStep('Clicking Drug Test Summary Report');
+    await page.evaluate(() => {
+      const el = Array.from(document.querySelectorAll('a')).find(
+        e => e.innerText && e.innerText.includes('Drug Test Summary Report')
+      );
+      if (el) el.click();
+    });
+    await wait(4000);
+
+    // 6. Wait for iframe
+    logStep('Waiting for iframe');
+    await page.waitForSelector('iframe[name="mainFrame"]', { timeout: 30000 });
+    const frameHandle = await page.$('iframe[name="mainFrame"]');
+    const frame = await frameHandle.contentFrame();
+
+    // 7. Click View All
+    logStep('Clicking View All');
+    await frame.waitForSelector('input#btnViewAll', { timeout: 30000 });
+    await frame.click('input#btnViewAll');
+
+    // 8. Set date
+    const minus20 = new Date();
+    minus20.setDate(minus20.getDate() - 20);
+    const mm = String(minus20.getMonth() + 1).padStart(2, '0');
+    const dd = String(minus20.getDate()).padStart(2, '0');
+    const yyyy = minus20.getFullYear();
+    const startDate = `${mm}/${dd}/${yyyy}`;
+    logStep('Setting start date');
+    try {
+      await frame.waitForSelector('input#txtStart', { timeout: 30000 });
+      await frame.evaluate((date) => {
+        const input = document.querySelector('input#txtStart');
+        input.value = date;
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+      }, startDate);
+    } catch (e) {
+      await saveDebug(page, 'fail_start_date');
+      throw e;
+    }
+    console.log('Set start date to:', startDate);
+
+    // 9. Click Run
+    logStep('Clicking Run');
+    await frame.waitForSelector('input#cmdRun', { timeout: 30000 });
+    await frame.click('input#cmdRun');
+    await wait(10000);
+
+    // 10. Click Download
+    logStep('Clicking Download');
+    try {
+      await frame.waitForSelector('.download-title', { timeout: 30000 });
+      await frame.evaluate(() => {
+        const el = Array.from(document.querySelectorAll('.download-title')).find(
+          e => e.innerText && e.innerText.trim() === 'Download'
+        );
+        if (el) el.click();
+      });
+    } catch (e) {
+      await saveDebug(page, 'fail_download');
+      throw e;
+    }
+
+    await wait(15000);
+    logStep('All done!');
+    console.log(`✅ Finished! Check your downloads folder: ${DOWNLOAD_DIR}`);
+
+  } catch (err) {
+    console.error('\n======= SCRIPT FAILED =======');
+    console.error(err);
+    if (page) await saveDebug(page, 'final_failure');
+    process.exit(1);
+  } finally {
+    if (browser) await browser.close();
+  }
 })();
