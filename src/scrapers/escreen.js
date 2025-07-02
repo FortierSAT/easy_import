@@ -11,7 +11,6 @@ if (!fs.existsSync(DOWNLOAD_DIR)) fs.mkdirSync(DOWNLOAD_DIR, { recursive: true }
 const wait = ms => new Promise(r => setTimeout(r, ms));
 
 (async () => {
-  // Ensure download folder exists
   if (!fs.existsSync(DOWNLOAD_DIR)) fs.mkdirSync(DOWNLOAD_DIR);
 
   const browser = await puppeteer.launch({
@@ -33,23 +32,27 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
     downloadPath: DOWNLOAD_DIR,
   });
 
-  // 1. Go to login page (let eScreen redirect you to Microsoft B2C)
+  // 1. Go to login page
+  console.log("Navigating to login page...");
   await page.goto('https://www.myescreen.com/', { waitUntil: 'networkidle2' });
 
   // 2. Fill in Username and submit
-  await page.waitForSelector('input#signInName', { timeout: 15000 });
+  console.log("Waiting for username input...");
+  await page.waitForSelector('input#signInName', { timeout: 30000 });
   await page.type('input#signInName', 'connor.beasley');
   await page.keyboard.press('Enter');
   console.log('Username submitted.');
 
   // 3. Wait for Password input, then fill and submit
-  await page.waitForSelector('input[type="password"]', { timeout: 15000 });
+  console.log("Waiting for password input...");
+  await page.waitForSelector('input[type="password"]', { timeout: 30000 });
   await page.type('input[type="password"]', 'Punky3!Brewster');
   await page.keyboard.press('Enter');
   console.log('Password submitted.');
 
   // 4. Wait for dashboard to load and click "Reports"
-  await wait(4000); // let dashboard settle
+  await wait(7000); // let dashboard settle
+  console.log("Clicking Reports...");
   await page.evaluate(() => {
     const el = Array.from(document.querySelectorAll('*')).find(
       e => e.innerText && e.innerText.trim() === 'Reports'
@@ -59,7 +62,8 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   console.log('Clicked Reports.');
 
   // 5. Click "Drug Test Summary Report" link
-  await wait(2000);
+  await wait(4000);
+  console.log("Clicking Drug Test Summary Report...");
   await page.evaluate(() => {
     const el = Array.from(document.querySelectorAll('a')).find(
       e => e.innerText && e.innerText.includes('Drug Test Summary Report')
@@ -69,11 +73,13 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   console.log('Clicked Drug Test Summary Report.');
 
   // 6. Wait for iframe and interact inside
-  await page.waitForSelector('iframe[name="mainFrame"]', { timeout: 15000 });
+  console.log("Waiting for iframe...");
+  await page.waitForSelector('iframe[name="mainFrame"]', { timeout: 30000 });
   const frameHandle = await page.$('iframe[name="mainFrame"]');
   const frame = await frameHandle.contentFrame();
 
-  await frame.waitForSelector('input#btnViewAll', { timeout: 10000 });
+  console.log("Waiting for View All button...");
+  await frame.waitForSelector('input#btnViewAll', { timeout: 30000 });
   await frame.click('input#btnViewAll');
   console.log('Clicked View All.');
 
@@ -85,22 +91,31 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   const yyyy = minus20.getFullYear();
   const startDate = `${mm}/${dd}/${yyyy}`;
 
-  await frame.waitForSelector('input#txtStart', { timeout: 10000 });
-  await frame.evaluate((date) => {
-    const input = document.querySelector('input#txtStart');
-    input.value = date;
-    input.dispatchEvent(new Event('change', { bubbles: true }));
-  }, startDate);
-  console.log('Set start date to:', startDate);
+  console.log("Waiting for start date input...");
+  try {
+    await frame.waitForSelector('input#txtStart', { timeout: 30000 });
+    await frame.evaluate((date) => {
+      const input = document.querySelector('input#txtStart');
+      input.value = date;
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    }, startDate);
+    console.log('Set start date to:', startDate);
+  } catch (e) {
+    console.error("Failed waiting for input#txtStart, taking screenshot...");
+    await frame.screenshot({ path: "/tmp/puppeteer-fail-txtStart.png" });
+    throw e;
+  }
 
   // Click "Run"
-  await frame.waitForSelector('input#cmdRun', { timeout: 10000 });
+  console.log("Waiting for Run button...");
+  await frame.waitForSelector('input#cmdRun', { timeout: 30000 });
   await frame.click('input#cmdRun');
   console.log('Clicked Run.');
 
   // 9. Click "Download"
-  await wait(5000);
-  await frame.waitForSelector('.download-title', { timeout: 10000 });
+  await wait(10000);
+  console.log("Waiting for Download button...");
+  await frame.waitForSelector('.download-title', { timeout: 30000 });
   await frame.evaluate(() => {
     const el = Array.from(document.querySelectorAll('.download-title')).find(
       e => e.innerText && e.innerText.trim() === 'Download'
@@ -110,10 +125,9 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   console.log('Clicked Download.');
 
   // 10. Wait for the file to finish downloading
-  await wait(10000);
+  await wait(15000);
 
   console.log(`✅ Finished! Check your downloads folder: ${DOWNLOAD_DIR}`);
 
-  // Optionally, close the browser:
   await browser.close();
 })();
