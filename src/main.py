@@ -19,16 +19,8 @@ from src.normalize.escreen  import normalize_escreen
 from src.utils       import is_complete
 from src.services.zoho      import push_records, sync_collection_sites_to_crm, _attach_lookup_ids
 
-import subprocess
-
-def ensure_playwright_browsers():
-    try:
-        subprocess.run(["playwright", "install", "--with-deps"], check=True)
-    except Exception as e:
-        print("Warning: Failed to install Playwright browsers", e)
-
-ensure_playwright_browsers()
-
+if os.system("playwright install chromium") != 0:
+    print("Playwright browser install failed!")
 
 # --- Config ---
 DOWNLOAD_ROOT = os.environ.get(
