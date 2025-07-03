@@ -35,4 +35,4 @@ EXPOSE 5000
 
 # 7) Default entrypoint for your pipeline CLI — change to run web service if you prefer
 ENTRYPOINT ["easy-import-pipeline"]
-CMD ["--help"]
+CMD ["--dry-run"]
