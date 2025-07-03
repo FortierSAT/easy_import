@@ -4,10 +4,10 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
 
-# ─── Stage 2: Final Python + Chromium image ──────────────
+# ─── Stage 2: Final Python + Chromium + LibreOffice image ─
 FROM python:3.11-slim
 
-# 1) System deps + Chromium & libs + Node runtime
+# 1) System deps + Chromium & libs + Node runtime + LibreOffice
 RUN apt-get update && apt-get install -y \
       chromium \
       gconf-service libasound2 libatk1.0-0 libatk-bridge2.0-0 \
@@ -17,6 +17,7 @@ RUN apt-get update && apt-get install -y \
       libxext6 libxfixes3 libxi6 libxrandr2 libxrender1 libxss1 libxtst6 \
       ca-certificates fonts-liberation libnss3 lsb-release xdg-utils \
       curl gnupg \
+      libreoffice-core libreoffice-calc fonts-dejavu-core \
     && curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
