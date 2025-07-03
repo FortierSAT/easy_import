@@ -1,0 +1,11 @@
+{
+  "name": "easy_import_escreen",
+  "version": "1.0.0",
+  "description": "Node deps for eScreen scraper",
+  "private": true,
+  "dependencies": {
+    "dotenv": "^17.0.1",
+    "puppeteer-extra": "^3.3.4",
+    "puppeteer-extra-plugin-stealth": "^2.11.1"
+  }
+}

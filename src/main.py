@@ -40,9 +40,11 @@ DOWNLOAD_PATHS = {
 }
 
 def escreen_scraper():
-    escreen_js = os.path.join(os.path.dirname(scrapers.__file__), "escreen.js")
+    # path inside container
+    escreen_js = os.path.join(os.getcwd(), "src", "scrapers", "escreen.js")
     subprocess.run(["node", escreen_js], check=True)
     return DOWNLOAD_PATHS["escreen"]
+
 
 SOURCES = [
     ("crl",    scrape_crl,         norm_crl,           "crl_summary_report.csv"),
