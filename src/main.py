@@ -5,6 +5,7 @@ import datetime
 import logging
 import os
 import subprocess
+import scrapers
 
 import pandas as pd
 from sqlalchemy import text
@@ -39,19 +40,14 @@ DOWNLOAD_PATHS = {
 }
 
 SOURCES = [
-    ("crl", scrape_crl, norm_crl, "crl_summary_report.csv"),
-    ("i3", scrape_i3, normalize_i3screen, "i3screen_export.csv"),
-    (
-        "escreen",
-        "escreen_scraper",
-        normalize_escreen,
-        "DrugTestSummaryReport_Total.xlsx",
-    ),
+  ("crl",     scrape_crl,       norm_crl,         "crl_summary_report.csv"),
+  ("i3",      scrape_i3,        normalize_i3screen, "i3screen_export.csv"),
+  ("escreen", escreen_scraper,  normalize_escreen,  "DrugTestSummaryReport_Total.xlsx"),
 ]
 
 
 def escreen_scraper():
-    escreen_js = os.path.join(os.path.dirname(__file__), "scrapers", "escreen.js")
+    escreen_js = os.path.join(os.path.dirname(scrapers.__file__), "escreen.js")
     subprocess.run(["node", escreen_js], check=True)
     return DOWNLOAD_PATHS["escreen"]
 
@@ -60,21 +56,34 @@ def convert_xlsx_to_csv(xlsx_path, output_dir):
     Converts XLSX → CSV via LibreOffice headless CLI.
     Uses the full path to soffice.exe on Windows.
     """
+    import logging
+
+    logger = logging.getLogger(__name__)
     os.makedirs(output_dir, exist_ok=True)
-    # call the full path
-    subprocess.run([
-        SOFFICE_EXE,
-        "--headless",
-        "--convert-to", "csv",
-        "--outdir", output_dir,
-        xlsx_path
-    ], check=True)
+
+    try:
+        subprocess.run([
+            SOFFICE_EXE,
+            "--headless",
+            "--convert-to", "csv",
+            "--outdir", output_dir,
+            xlsx_path
+        ], check=True)
+    except FileNotFoundError:
+        logger.error("LibreOffice executable not found at %s", SOFFICE_EXE)
+        raise
+    except subprocess.CalledProcessError as e:
+        logger.error("LibreOffice conversion failed: %s", e)
+        raise
+
     # LibreOffice names the output <basename>.csv
     base = os.path.splitext(os.path.basename(xlsx_path))[0]
     csv_path = os.path.join(output_dir, f"{base}.csv")
     if not os.path.exists(csv_path):
+        logger.error("Conversion succeeded but CSV not found at %s", csv_path)
         raise FileNotFoundError(f"LibreOffice failed to convert {xlsx_path}")
     return csv_path
+
 
 def find_escreen_header_row(csv_path):
     """Auto-detect the header row for eScreen exports."""

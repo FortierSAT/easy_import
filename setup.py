@@ -1,7 +1,11 @@
 from setuptools import setup, find_packages
 
 with open("requirements.txt") as f:
-    install_requires = [l.strip() for l in f if l.strip() and not l.startswith("#")]
+    install_requires = [
+        l.strip()
+        for l in f
+        if l.strip() and not l.startswith("#")
+    ]
 
 setup(
     name="easy_import",
@@ -16,6 +20,11 @@ setup(
     package_dir={"": "src"},
 
     include_package_data=True,
+    package_data={
+        # adjust this to match the actual scraper package name
+        "scrapers": ["*.js"],
+    },
+
     install_requires=install_requires,
 
     entry_points={
