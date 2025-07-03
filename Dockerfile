@@ -31,7 +31,6 @@ WORKDIR /app
 ENV PROJECT_ROOT=/app
 
 # 4) Copy Python project and install
-COPY .env             /app/.env
 COPY setup.py         /app/setup.py
 COPY requirements.txt /app/requirements.txt
 COPY MANIFEST.in      /app/MANIFEST.in
