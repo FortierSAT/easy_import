@@ -1,11 +1,12 @@
 import logging
 import os
 from pathlib import Path
-from dotenv import load_dotenv
+from dotenv import load_dotenv, find_dotenv
 
-# look for a .env in the project root
-env_path = Path(__file__).parent.parent / ".env"
-load_dotenv(env_path)
+# auto-locate the first .env in parent directories
+env_file = find_dotenv()
+print(f"→ loading env vars from {env_file}")
+load_dotenv(env_file)
 
 # Logging config
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()

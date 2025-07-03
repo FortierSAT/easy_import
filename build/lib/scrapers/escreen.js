@@ -7,149 +7,162 @@ require('dotenv').config();
 
 puppeteer.use(StealthPlugin());
 
-const DOWNLOAD_DIR = path.resolve(__dirname, '..', 'downloads');
-if (!fs.existsSync(DOWNLOAD_DIR)) {
-  console.log(`📁 Creating download directory at ${DOWNLOAD_DIR}`);
-  fs.mkdirSync(DOWNLOAD_DIR, { recursive: true });
-} else {
-  console.log(`📁 Download directory exists: ${DOWNLOAD_DIR}`);
+// ensure download and debug dirs exist
+const BASE_DIR     = path.resolve(__dirname, '..');
+const DOWNLOAD_DIR = path.join(BASE_DIR, 'downloads');
+const DEBUG_DIR    = path.join(BASE_DIR, 'debug');
+for (const d of [DOWNLOAD_DIR, DEBUG_DIR]) {
+  if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
 }
 
 const sleep = ms => new Promise(res => setTimeout(res, ms));
 
 ;(async () => {
   console.log('🛠️  Starting eScreen scraper…');
-  console.log('👷  NODE cwd:', process.cwd());
-  console.log('🔑 ESCREEN_USERNAME:', process.env.ESCREEN_USERNAME ? '✓' : '✗ (missing)');
-  console.log('🔒 ESCREEN_PASSWORD:', process.env.ESCREEN_PASSWORD ? '✓' : '✗ (missing)');
+  const inDocker = fs.existsSync('/.dockerenv') || process.env.RUNNING_IN_DOCKER === 'true';
+  console.log(`🔍 Running in Docker? ${inDocker}`);
+
+  const launchOpts = inDocker
+    ? {
+        headless: true,
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium',
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--remote-debugging-port=9222',
+          '--remote-debugging-address=0.0.0.0'
+        ]
+      }
+    : {
+        headless: true,
+        defaultViewport: null,
+        args: ['--start-maximized']
+      };
 
   try {
-    const inDocker = fs.existsSync("/.dockerenv") || process.env.RUNNING_IN_DOCKER === "true";
+    console.log('🌐 Launching browser…', launchOpts);
+    const browser = await puppeteer.launch(launchOpts);
+    console.log('✅ Browser launched');
 
-    console.log('🌐 Launching browser…');
-
-    const launchOptions = inDocker
-      ? {
-          headless: true,
-          executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || "/usr/bin/chromium",
-          args: [
-            "--no-sandbox",
-            "--disable-setuid-sandbox",
-            "--disable-dev-shm-usage",
-          ],
-        }
-      : {
-          headless: true,               // show UI locally
-          defaultViewport: null,         // inherit your desktop resolution
-          args: ["--start-maximized"],   // pop up a full window
-        };
-
-    console.log(`🔍 Running in Docker? ${inDocker}`);
-    console.log("⚙️  Launch options:", launchOptions);
-
-    const browser = await puppeteer.launch(launchOptions);
-    console.log("✅ Browser launched");
-
-    console.log('🌐 Opening new page…');
     const page = await browser.newPage();
     console.log('✅ New page opened');
 
+    // Debug hooks
+    page.on('console', msg => console.log(`PAGE LOG ▶ [${msg.type()}]`, msg.text()));
+    page.on('pageerror', err => console.error('PAGE ERROR ▶', err));
+    page.on('requestfailed', req => console.warn('PAGE REQ FAIL ▶', req.url(), req.failure()));
+    page.on('response', res => console.log(`PAGE RESP ${res.status()} ◀`, res.url()));
+
+    // set up downloads
     console.log('⬇️  Configuring download behavior →', DOWNLOAD_DIR);
-    const client = await page.target().createCDPSession();
-    await client.send('Page.setDownloadBehavior', {
-      behavior: 'allow',
-      downloadPath: DOWNLOAD_DIR,
-    });
+    const cdp = await page.target().createCDPSession();
+    await cdp.send('Page.setDownloadBehavior', { behavior: 'allow', downloadPath: DOWNLOAD_DIR });
     console.log('✅ Download behavior set');
-    // ────────────────────────────────────────────────────────────────────
 
-    // 1) Login
-    console.log('🚪 Navigating to login page…');
-    await page.goto('https://www.myescreen.com/', { waitUntil: 'networkidle2' });
-
-    console.log('✍️  Entering username');
-    await page.waitForSelector('input#signInName', { timeout: 20000 });
+    // 1) login
+    console.log('🚪 goto login…');
+    await page.goto('https://www.myescreen.com/', { waitUntil: 'networkidle2', timeout: 60000 });
+    await page.waitForSelector('input#signInName', { timeout: 30000 });
     await page.type('input#signInName', process.env.ESCREEN_USERNAME);
     await page.keyboard.press('Enter');
-
-    console.log('⌛ Waiting for password field…');
-    await page.waitForSelector('input[type="password"]', { timeout: 20000 });
-    console.log('✍️  Entering password');
+    await page.waitForSelector('input[type="password"]', { timeout: 30000 });
     await page.type('input[type="password"]', process.env.ESCREEN_PASSWORD);
     await page.keyboard.press('Enter');
-
-    console.log('⌛ Waiting for post-login…');
-    await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 });
+    await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 });
     console.log('✅ Logged in');
 
-    // 2) Click “Reports”
-    console.log('📰 Waiting for Reports link…');
+    // 2) Reports menu
+    console.log('🔎 opening Reports menu');
     await page.waitForSelector('div.mainNavLink', { timeout: 30000 });
-    console.log('🔘 Clicking Reports…');
     await page.evaluate(() => {
-      document.querySelectorAll('div.mainNavLink')
-        .forEach(el => {
-          if (el.innerText.trim() === 'Reports') el.click();
-        });
+      for (let el of document.querySelectorAll('div.mainNavLink'))
+        if (el.innerText.trim() === 'Reports') el.click();
     });
+    await sleep(3000);
 
-    // 3) Click “Drug Test Summary Report”
-    console.log('⌛ Waiting for summary-report link…');
+    // 3) Summary report
+    console.log('🔎 selecting Summary Report');
     await page.waitForSelector('a[target="mainFrame"]', { timeout: 30000 });
-    console.log('🔘 Clicking Summary Report…');
     await page.evaluate(() => {
-      Array.from(document.querySelectorAll('a[target="mainFrame"]'))
-        .find(a => a.innerText.includes('Drug Test Summary Report'))
-        .click();
+      const link = Array.from(document.querySelectorAll('a[target="mainFrame"]'))
+        .find(a => a.innerText.includes('Drug Test Summary Report'));
+      link.click();
     });
+    await sleep(5000);
 
-    // 4) Click “View All”
-    console.log('📥 Waiting for View All…');
-    const frameHandle = await page.waitForSelector('iframe[name="mainFrame"]', { timeout: 30000 });
-    const frame       = await frameHandle.contentFrame();
+    // 4) iframe → View All
+    console.log('🔎 entering iframe and clicking View All');
+    let fh = await page.waitForSelector('iframe[name="mainFrame"]', { timeout: 30000 });
+    let frame = await fh.contentFrame();
     await frame.waitForSelector('input#btnViewAll', { timeout: 30000 });
-    console.log('🔍 Clicking View All…');
     await frame.click('input#btnViewAll');
     await sleep(5000);
 
-    // set date back 20 days
-    const twentyDaysAgo = new Date(Date.now() - 20*24*60*60*1000);
-    const mm = String(twentyDaysAgo.getMonth()+1).padStart(2,'0');
-    const dd = String(twentyDaysAgo.getDate()).padStart(2,'0');
-    const yyyy = twentyDaysAgo.getFullYear();
-    const formatted = `${mm}/${dd}/${yyyy}`;
-    console.log(`📅 Setting start date to ${formatted}`);
-    await frame.waitForSelector('input#txtStart', { timeout: 15000 });
+    // 4.5) switch back to mainFrame
+    console.log('🔄 switching to mainFrame after View All');
+    fh = await page.waitForSelector('iframe[name="mainFrame"]', { timeout: 30000 });
+    frame = await fh.contentFrame();
+    if (!frame) throw new Error('Couldn’t reacquire mainFrame');
+
+    // DEBUG: dump the frame URL, HTML and screenshot
+    const allInputs = await frame.$$eval('input', els =>
+      els.map(el => ({
+        id: el.id,
+        name: el.name,
+        type: el.type,
+        placeholder: el.getAttribute('placeholder') || null,
+        class: el.className || null
+      }))
+    );
+    console.log('🐛 [DEBUG] all inputs in summary frame:', allInputs);
+
+    const now = Date.now();
+    const frameUrl = frame.url();
+    console.log('🐛 [DEBUG] frame URL:', frameUrl);
+
+    const html = await frame.content();
+    fs.writeFileSync(path.join(DEBUG_DIR, `frame-${now}.html`), html);
+    console.log(`🐛 [DEBUG] Wrote HTML dump → debug/frame-${now}.html`);
+
+    await frame.screenshot({ path: path.join(DEBUG_DIR, `frame-${now}.png`), fullPage: true });
+    console.log(`🐛 [DEBUG] Took screenshot → debug/frame-${now}.png`);
+
+    // now try to find the date input…
+    await frame.waitForSelector('input#txtStart', { timeout: 30000 });
+
+    // now set date 20 days ago inside that frame
+    const d20     = new Date(Date.now() - 20 * 24 * 60 * 60 * 1000);
+    const mm      = String(d20.getMonth() + 1).padStart(2, '0');
+    const dd      = String(d20.getDate()).padStart(2, '0');
+    const yr      = d20.getFullYear();
+    const dateStr = `${mm}/${dd}/${yr}`;
+    console.log('📅 setting start date →', dateStr);
+    await frame.waitForSelector('input#txtStart', { timeout: 30000 });
     await frame.click('input#txtStart', { clickCount: 3 });
-    await frame.type('input#txtStart', formatted, { delay: 50 });
+    await frame.type('input#txtStart', dateStr, { delay: 50 });
     await sleep(2000);
 
-    // 5) Click “Run”
-    console.log('⌛ Waiting for Run button…');
+    // 5) Run
+    console.log('▶ clicking Run');
     await frame.waitForSelector('input#cmdRun', { timeout: 30000 });
-    console.log('🔎 Clicking Run…');
     await frame.click('input#cmdRun');
     await sleep(10000);
 
-    // 6) DOWNLOAD via Inbox icon
-    console.log('⬇️  Waiting for the download icon…');
+    // 6) download via Inbox icon
+    console.log('⬇️  clicking download icon');
     await frame.waitForSelector('i.abt-icon.icon-Inbox', { timeout: 30000 });
-    console.log('🔘 Clicking the download link via the Inbox icon…');
-    await frame.evaluate(() => {
-      const icon = document.querySelector('i.abt-icon.icon-Inbox');
-      if (!icon) throw new Error('Download icon not found');
-      icon.click();
-    });
+    await frame.click('i.abt-icon.icon-Inbox');
 
-    // 7) Wait for file to land
+    // 7) wait for file
     const outPath = path.join(DOWNLOAD_DIR, 'DrugTestSummaryReport_Total.xlsx');
-    console.log('⌛ Waiting for XLSX to appear…');
-    for (let i = 0; i < 20; i++) {
+    console.log('⌛ waiting for file →', outPath);
+    for (let i = 0; i < 30; i++) {
       if (fs.existsSync(outPath)) break;
       await sleep(1000);
     }
     if (!fs.existsSync(outPath)) {
-      throw new Error(`Download failed: ${outPath} not found`);
+      throw new Error(`XLSX not found at ${outPath}`);
     }
 
     console.log('✅ Download complete →', outPath);
@@ -157,6 +170,19 @@ const sleep = ms => new Promise(res => setTimeout(res, ms));
     process.exit(0);
 
   } catch (err) {
+    // dump screenshot & HTML for post-mortem
+    const ts = Date.now();
+    if (typeof page !== 'undefined') {
+      try {
+        const shot = path.join(DEBUG_DIR, `err-${ts}.png`);
+        const html = path.join(DEBUG_DIR, `err-${ts}.html`);
+        await page.screenshot({ path: shot, fullPage: true });
+        await page.content().then(c => fs.writeFileSync(html, c));
+        console.error('🧪 Saved debug files:', shot, html);
+      } catch (e) {
+        console.error('⚠️ Failed to capture debug artifacts', e);
+      }
+    }
     console.error('❌ eScreen scraper error:', err);
     process.exit(1);
   }

@@ -28,6 +28,7 @@ src/services/__init__.py
 src/services/zoho.py
 src/web/__init__.py
 src/web/routes.py
+src/web/static/.DS_Store
 src/web/static/css/main.css
 src/web/static/images/logo.png
 src/web/static/js/main.js

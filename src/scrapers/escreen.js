@@ -17,9 +17,33 @@ for (const d of [DOWNLOAD_DIR, DEBUG_DIR]) {
 
 const sleep = ms => new Promise(res => setTimeout(res, ms));
 
+/**
+ * Dismiss the TrustArc banner if it appears on the given page.
+ */
+async function dismissTrustArc(page, timeout = 10000) {
+  try {
+    await page.waitForSelector('#truste-consent-required', {
+      visible: true,
+      timeout: 3000
+    });
+    console.log('🐛 [dismissTrustArc] Found REJECT → clicking…');
+    await page.click('#truste-consent-required');
+    console.log('🐛 [dismissTrustArc] Clicked. Waiting for banner to disappear…');
+    await page.waitForFunction(
+      () => !document.querySelector('#truste-consent-track'),
+      { timeout }
+    );
+    console.log('✅ [dismissTrustArc] Banner dismissed');
+  } catch (err) {
+    // probably never appeared
+    console.log('ℹ️ [dismissTrustArc] No TrustArc banner found (or timed out).');
+  }
+}
+
 ;(async () => {
   console.log('🛠️  Starting eScreen scraper…');
-  const inDocker = fs.existsSync('/.dockerenv') || process.env.RUNNING_IN_DOCKER === 'true';
+  const inDocker = fs.existsSync('/.dockerenv')
+    || process.env.RUNNING_IN_DOCKER === 'true';
   console.log(`🔍 Running in Docker? ${inDocker}`);
 
   const launchOpts = inDocker
@@ -48,8 +72,8 @@ const sleep = ms => new Promise(res => setTimeout(res, ms));
     const page = await browser.newPage();
     console.log('✅ New page opened');
 
-    // Debug hooks
-    page.on('console', msg => console.log(`PAGE LOG ▶ [${msg.type()}]`, msg.text()));
+    // Debug logging
+    page.on('console', msg   => console.log(`PAGE LOG ▶ [${msg.type()}]`, msg.text()));
     page.on('pageerror', err => console.error('PAGE ERROR ▶', err));
     page.on('requestfailed', req => console.warn('PAGE REQ FAIL ▶', req.url(), req.failure()));
     page.on('response', res => console.log(`PAGE RESP ${res.status()} ◀`, res.url()));
@@ -57,22 +81,46 @@ const sleep = ms => new Promise(res => setTimeout(res, ms));
     // set up downloads
     console.log('⬇️  Configuring download behavior →', DOWNLOAD_DIR);
     const cdp = await page.target().createCDPSession();
-    await cdp.send('Page.setDownloadBehavior', { behavior: 'allow', downloadPath: DOWNLOAD_DIR });
+    await cdp.send('Page.setDownloadBehavior', {
+      behavior: 'allow',
+      downloadPath: DOWNLOAD_DIR
+    });
     console.log('✅ Download behavior set');
 
-    // 1) login
-    console.log('🚪 goto login…');
-    await page.goto('https://www.myescreen.com/', { waitUntil: 'networkidle2', timeout: 60000 });
+    //
+    // ──────────────────────────────────────────────────────────────────────────────
+    //   STEP 0: Navigate to landing page & dismiss TrustArc
+    // ──────────────────────────────────────────────────────────────────────────────
+    //
+    console.log('🌐 Going to landing page…');
+    await page.goto('https://www.myescreen.com/', {
+      waitUntil: 'networkidle2',
+      timeout: 60000
+    });
+    await dismissTrustArc(page);
+
+    //
+    // ──────────────────────────────────────────────────────────────────────────────
+    //   STEP 1: Login
+    // ──────────────────────────────────────────────────────────────────────────────
+    //
+    console.log('🚪 Waiting for sign-in field…');
     await page.waitForSelector('input#signInName', { timeout: 30000 });
     await page.type('input#signInName', process.env.ESCREEN_USERNAME);
     await page.keyboard.press('Enter');
+
+    console.log('🔐 Waiting for password field…');
     await page.waitForSelector('input[type="password"]', { timeout: 30000 });
     await page.type('input[type="password"]', process.env.ESCREEN_PASSWORD);
     await page.keyboard.press('Enter');
     await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 });
     console.log('✅ Logged in');
 
-    // 2) Reports menu
+    //
+    // ──────────────────────────────────────────────────────────────────────────────
+    //   STEP 2: Open Reports menu (then dismiss banner again just in case)
+    // ──────────────────────────────────────────────────────────────────────────────
+    //
     console.log('🔎 opening Reports menu');
     await page.waitForSelector('div.mainNavLink', { timeout: 30000 });
     await page.evaluate(() => {
@@ -80,8 +128,13 @@ const sleep = ms => new Promise(res => setTimeout(res, ms));
         if (el.innerText.trim() === 'Reports') el.click();
     });
     await sleep(3000);
+    await dismissTrustArc(page);
 
-    // 3) Summary report
+    //
+    // ──────────────────────────────────────────────────────────────────────────────
+    //   STEP 3: Select Drug Test Summary Report
+    // ──────────────────────────────────────────────────────────────────────────────
+    //
     console.log('🔎 selecting Summary Report');
     await page.waitForSelector('a[target="mainFrame"]', { timeout: 30000 });
     await page.evaluate(() => {
@@ -90,73 +143,68 @@ const sleep = ms => new Promise(res => setTimeout(res, ms));
       link.click();
     });
     await sleep(5000);
+    await dismissTrustArc(page);
 
-    // 4) iframe → View All
-    console.log('🔎 entering iframe and clicking View All');
-    let fh = await page.waitForSelector('iframe[name="mainFrame"]', { timeout: 30000 });
-    let frame = await fh.contentFrame();
+    //
+    // ──────────────────────────────────────────────────────────────────────────────
+    //   STEP 4: Click “View All” inside the iframe
+    // ──────────────────────────────────────────────────────────────────────────────
+    //
+    console.log('🔎 clicking View All in report iframe');
+    let container = await page.waitForSelector('iframe[name="mainFrame"]', { timeout: 30000 });
+    let frame = await container.contentFrame();
     await frame.waitForSelector('input#btnViewAll', { timeout: 30000 });
     await frame.click('input#btnViewAll');
     await sleep(5000);
 
-    // 4.5) switch back to mainFrame
-    console.log('🔄 switching to mainFrame after View All');
-    fh = await page.waitForSelector('iframe[name="mainFrame"]', { timeout: 30000 });
-    frame = await fh.contentFrame();
-    if (!frame) throw new Error('Couldn’t reacquire mainFrame');
+    //
+    // ──────────────────────────────────────────────────────────────────────────────
+    //   STEP 4.5: Re-acquire the frame & debug-dump
+    // ──────────────────────────────────────────────────────────────────────────────
+    //
+    console.log('🔄 re-acquiring mainFrame');
+    container = await page.waitForSelector('iframe[name="mainFrame"]', { timeout: 30000 });
+    frame = await container.contentFrame();
 
-    // DEBUG: dump the frame URL, HTML and screenshot
-    const allInputs = await frame.$$eval('input', els =>
-      els.map(el => ({
-        id: el.id,
-        name: el.name,
-        type: el.type,
-        placeholder: el.getAttribute('placeholder') || null,
-        class: el.className || null
-      }))
-    );
-    console.log('🐛 [DEBUG] all inputs in summary frame:', allInputs);
-
-    const now = Date.now();
-    const frameUrl = frame.url();
-    console.log('🐛 [DEBUG] frame URL:', frameUrl);
-
+    const ts = Date.now();
     const html = await frame.content();
-    fs.writeFileSync(path.join(DEBUG_DIR, `frame-${now}.html`), html);
-    console.log(`🐛 [DEBUG] Wrote HTML dump → debug/frame-${now}.html`);
+    fs.writeFileSync(path.join(DEBUG_DIR, `frame-${ts}.html`), html);
+    console.log(`🐛 [DEBUG] Wrote HTML → debug/frame-${ts}.html`);
+    await container.screenshot({ path: path.join(DEBUG_DIR, `frame-${ts}.png`) });
+    console.log(`🐛 [DEBUG] Screenshot → debug/frame-${ts}.png`);
 
-    await frame.screenshot({ path: path.join(DEBUG_DIR, `frame-${now}.png`), fullPage: true });
-    console.log(`🐛 [DEBUG] Took screenshot → debug/frame-${now}.png`);
-
-    // now try to find the date input…
+    //
+    // ──────────────────────────────────────────────────────────────────────────────
+    //   STEP 5: Set date 20 days ago
+    // ──────────────────────────────────────────────────────────────────────────────
+    //
+    console.log('📅 setting start date…');
     await frame.waitForSelector('input#txtStart', { timeout: 30000 });
-
-    // now set date 20 days ago inside that frame
     const d20     = new Date(Date.now() - 20 * 24 * 60 * 60 * 1000);
     const mm      = String(d20.getMonth() + 1).padStart(2, '0');
     const dd      = String(d20.getDate()).padStart(2, '0');
     const yr      = d20.getFullYear();
     const dateStr = `${mm}/${dd}/${yr}`;
-    console.log('📅 setting start date →', dateStr);
-    await frame.waitForSelector('input#txtStart', { timeout: 30000 });
     await frame.click('input#txtStart', { clickCount: 3 });
     await frame.type('input#txtStart', dateStr, { delay: 50 });
     await sleep(2000);
 
-    // 5) Run
+    //
+    // ──────────────────────────────────────────────────────────────────────────────
+    //   STEP 6: Run & Download
+    // ──────────────────────────────────────────────────────────────────────────────
+    //
     console.log('▶ clicking Run');
     await frame.waitForSelector('input#cmdRun', { timeout: 30000 });
     await frame.click('input#cmdRun');
     await sleep(10000);
 
-    // 6) download via Inbox icon
     console.log('⬇️  clicking download icon');
     await frame.waitForSelector('i.abt-icon.icon-Inbox', { timeout: 30000 });
     await frame.click('i.abt-icon.icon-Inbox');
 
-    // 7) wait for file
+    console.log('⌛ waiting for file…');
     const outPath = path.join(DOWNLOAD_DIR, 'DrugTestSummaryReport_Total.xlsx');
-    console.log('⌛ waiting for file →', outPath);
     for (let i = 0; i < 30; i++) {
       if (fs.existsSync(outPath)) break;
       await sleep(1000);
@@ -170,20 +218,19 @@ const sleep = ms => new Promise(res => setTimeout(res, ms));
     process.exit(0);
 
   } catch (err) {
-    // dump screenshot & HTML for post-mortem
     const ts = Date.now();
+    console.error('❌ eScreen scraper error:', err);
     if (typeof page !== 'undefined') {
       try {
         const shot = path.join(DEBUG_DIR, `err-${ts}.png`);
-        const html = path.join(DEBUG_DIR, `err-${ts}.html`);
+        const snapHtml = path.join(DEBUG_DIR, `err-${ts}.html`);
         await page.screenshot({ path: shot, fullPage: true });
-        await page.content().then(c => fs.writeFileSync(html, c));
-        console.error('🧪 Saved debug files:', shot, html);
+        fs.writeFileSync(snapHtml, await page.content());
+        console.error('🧪 Saved debug files:', shot, snapHtml);
       } catch (e) {
         console.error('⚠️ Failed to capture debug artifacts', e);
       }
     }
-    console.error('❌ eScreen scraper error:', err);
     process.exit(1);
   }
 })();
