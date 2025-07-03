@@ -43,7 +43,7 @@ markupsafe==3.0.2
     #   flask
     #   jinja2
     #   werkzeug
-numpy==2.0.2
+numpy==2.3.1
     # via pandas
 openpyxl==3.1.5
     # via -r requirements.in

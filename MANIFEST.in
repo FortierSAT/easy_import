@@ -1,1 +1,3 @@
-recursive-include src/scrapers *.js
+# MANIFEST.in
+include src/scrapers/*.js
+recursive-include src/web/static *.*

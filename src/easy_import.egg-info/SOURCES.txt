@@ -1,5 +1,10 @@
+MANIFEST.in
 pyproject.toml
 setup.py
+src/config.py
+src/main.py
+src/run.py
+src/utils.py
 src/db/__init__.py
 src/db/models.py
 src/db/repository.py
@@ -8,6 +13,7 @@ src/easy_import.egg-info/PKG-INFO
 src/easy_import.egg-info/SOURCES.txt
 src/easy_import.egg-info/dependency_links.txt
 src/easy_import.egg-info/entry_points.txt
+src/easy_import.egg-info/requires.txt
 src/easy_import.egg-info/top_level.txt
 src/normalize/__init__.py
 src/normalize/common.py
@@ -16,8 +22,12 @@ src/normalize/escreen.py
 src/normalize/i3screen.py
 src/scrapers/__init__.py
 src/scrapers/crl.py
+src/scrapers/escreen.js
 src/scrapers/i3.py
 src/services/__init__.py
 src/services/zoho.py
 src/web/__init__.py
 src/web/routes.py
+src/web/static/css/main.css
+src/web/static/images/logo.png
+src/web/static/js/main.js

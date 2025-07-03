@@ -1,6 +1,9 @@
+config
 db
+main
 normalize
 run
 scrapers
 services
+utils
 web
