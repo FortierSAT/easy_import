@@ -1,10 +1,28 @@
+# Python bytecode
 __pycache__/
+*.py[cod]
+
+# Virtual environments
+.venv/
+env/
+venv/
+
+# Environment files
 .env
-outputs/
-*.pyc
+
+# IDE/editor files
 .DS_Store
-downloads/
-node_modules/
-.venv
-zip_project.sh
-package-lock.json
+.vscode/
+*.sublime-workspace
+*.sublime-project
+
+# Logs and outputs
+*.log
+outputs/
+src/downloads/
+
+# Git metadata (just in case)
+.git/
+
+# Zip archives
+*.zip
