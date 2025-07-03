@@ -40,10 +40,14 @@ DOWNLOAD_PATHS = {
 }
 
 SOURCES = [
-  ("crl",     scrape_crl,       norm_crl,         "crl_summary_report.csv"),
-  ("i3",      scrape_i3,        normalize_i3screen, "i3screen_export.csv"),
-  ("escreen", escreen_scraper,  normalize_escreen,  "DrugTestSummaryReport_Total.xlsx"),
+    ("crl",    scrape_crl,         norm_crl,           "crl_summary_report.csv"),
+    ("i3",     scrape_i3,          normalize_i3screen, "i3screen_export.csv"),
+    (
+      "escreen",
+      escreen_scraper,            normalize_escreen,   "DrugTestSummaryReport_Total.xlsx",
+    ),
 ]
+
 
 
 def escreen_scraper():
