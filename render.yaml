@@ -1,9 +1,7 @@
-services:
-  - type: web
-    name: easy-import-pipeline
+cron:
+  - name: import-pipeline
+    schedule: "0 2 * * *"
     env: docker
-    branch: main
     dockerfilePath: Dockerfile
-    # With Docker, Render picks up ENTRYPOINT/CMD, so this is optional:
-    startCommand: "easy-import-pipeline --dry-run"
-    healthCheckPath: "/"
+    command: "easy-import-pipeline"
+    args: ["--dry-run"]
