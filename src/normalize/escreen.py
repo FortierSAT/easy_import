@@ -1,16 +1,18 @@
 import pandas as pd
-from rapidfuzz import process, fuzz
-from src.db.session import engine
-from src.normalize.common import (
+from rapidfuzz import fuzz, process
+
+from db.session import engine
+from normalize.common import (
+    MASTER_COLUMNS,
+    map_laboratory,
+    map_reason,
+    map_regulation,
+    map_result,
+    parse_name,
     safe_date_parse,
     to_zoho_date,
-    parse_name,
-    map_reason,
-    map_result,
-    map_laboratory,
-    map_regulation,
-    MASTER_COLUMNS,
 )
+
 
 def load_crm_reference():
     query = """
@@ -21,17 +23,22 @@ def load_crm_reference():
     """
     return pd.read_sql(query, con=engine)
 
+
 crm_df = load_crm_reference()
 crm_names = crm_df["company"].astype(str).tolist()
 crm_codes = crm_df["code"].astype(str).tolist()
 
+
 def fuzzy_code(company):
     if pd.isna(company) or not str(company).strip():
         return ""
-    match, score, idx = process.extractOne(company, crm_names, scorer=fuzz.token_sort_ratio)
+    match, score, idx = process.extractOne(
+        company, crm_names, scorer=fuzz.token_sort_ratio
+    )
     if score > 70:
         return crm_codes[idx]
     return ""
+
 
 def find_col(possible_cols, df_columns):
     for candidate in possible_cols:
@@ -39,6 +46,7 @@ def find_col(possible_cols, df_columns):
             if col.strip().lower() == candidate.strip().lower():
                 return col
     raise KeyError(f"None of {possible_cols} found in columns: {df_columns}")
+
 
 def normalize_escreen(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
@@ -71,20 +79,13 @@ def normalize_escreen(df: pd.DataFrame) -> pd.DataFrame:
                 return cc_str
         client = row.get(client_col, "")
         return str(client).strip() if pd.notna(client) else ""
+
     df["Company"] = df.apply(choose_company, axis=1)
     df["Code"] = df["Company"].apply(fuzzy_code)
 
     # 3) Dates
-    df["Collection_Date"] = (
-        df[coll_date_col]
-        .apply(safe_date_parse)
-        .apply(to_zoho_date)
-    )
-    df["MRO_Received"] = (
-        df[mro_date_col]
-        .apply(safe_date_parse)
-        .apply(to_zoho_date)
-    )
+    df["Collection_Date"] = df[coll_date_col].apply(safe_date_parse).apply(to_zoho_date)
+    df["MRO_Received"] = df[mro_date_col].apply(safe_date_parse).apply(to_zoho_date)
 
     # 4) Result, reason, regulation, type
     df["Test_Result"] = df[result_col].apply(map_result)
@@ -109,6 +110,7 @@ def normalize_escreen(df: pd.DataFrame) -> pd.DataFrame:
         if "ebt" in v or "breath" in v:
             return "Alcohol Breath Test"
         return "Other"
+
     df["Test_Type"] = df[test_type_col].apply(escreen_test_type)
     df["Laboratory"] = df[test_type_col].apply(map_laboratory)
 

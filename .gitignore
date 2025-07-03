@@ -20,6 +20,7 @@ venv/
 *.log
 outputs/
 src/downloads/
+downloads/
 
 # Git metadata (just in case)
 .git/

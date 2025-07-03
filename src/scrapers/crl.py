@@ -1,8 +1,10 @@
-import os
 import logging
+import os
+
 import pandas as pd
 from playwright.sync_api import sync_playwright
-from src.config import CRL_USER, CRL_PASS
+
+from config import CRL_PASS, CRL_USER
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -11,6 +13,7 @@ logger = logging.getLogger(__name__)
 DOWNLOAD_DIR = os.path.join(os.path.dirname(__file__), os.pardir, "downloads")
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 CRL_CSV_PATH = os.path.join(DOWNLOAD_DIR, "crl_summary_report.csv")
+
 
 def scrape_crl() -> pd.DataFrame:
     """
@@ -25,7 +28,9 @@ def scrape_crl() -> pd.DataFrame:
 
         # Navigate to login page
         logger.info("Navigating to CRL login page...")
-        page.goto("https://fortiersubstabusetstng.workforce.crlcorp.com/clinicportal/ng/#/")
+        page.goto(
+            "https://fortiersubstabusetstng.workforce.crlcorp.com/clinicportal/ng/#/"
+        )
 
         # Perform login
         logger.info("Filling in credentials for %s", CRL_USER)
@@ -45,8 +50,10 @@ def scrape_crl() -> pd.DataFrame:
 
         # Navigate to Orders
         logger.info("Navigating to Orders page...")
-        page.goto("https://fortiersubstabusetstng.workforce.crlcorp.com/clinicportal/ng/#/orders")
-       
+        page.goto(
+            "https://fortiersubstabusetstng.workforce.crlcorp.com/clinicportal/ng/#/orders"
+        )
+
         # Open the Reports menu
         logger.info("Clicking 'Reports'...")
         page.get_by_role("button", name="Reports").click()
@@ -79,6 +86,7 @@ def scrape_crl() -> pd.DataFrame:
     df = pd.read_csv(CRL_CSV_PATH)
     logger.info("CRL DataFrame contains %d rows", len(df))
     return df
+
 
 if __name__ == "__main__":
     # Quick standalone test

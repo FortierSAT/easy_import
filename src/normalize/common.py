@@ -21,7 +21,7 @@ REASON_MAP = {
     "company fit for duty": "Return To Duty",
     "cdl recertification": "CDL Recertification",
     "re-certification": "Recertification",
-    "recertification": "Recertification"
+    "recertification": "Recertification",
 }
 
 RESULT_MAP = {
@@ -40,31 +40,45 @@ RESULT_MAP = {
     "not reported": "",
     "received at lab": "",
     "pending ccf": "",
-    "sent to lab": ""
+    "sent to lab": "",
 }
 
 MASTER_COLUMNS = [
-    "Company", "Code", "CCFID", "First_Name", "Last_Name", "Primary_ID",
-    "Collection_Date", "Test_Reason", "Test_Result", "Test_Type",
-    "Regulation", "MRO_Received", "Laboratory", "Collection_Site", "Collection_Site_ID", "Location"
+    "Company",
+    "Code",
+    "CCFID",
+    "First_Name",
+    "Last_Name",
+    "Primary_ID",
+    "Collection_Date",
+    "Test_Reason",
+    "Test_Result",
+    "Test_Type",
+    "Regulation",
+    "MRO_Received",
+    "Laboratory",
+    "Collection_Site",
+    "Collection_Site_ID",
+    "Location",
 ]
 
+
 # --- Shared Helper Functions ---
-def safe_date_parse(val, out_fmt='%m/%d/%Y'):
+def safe_date_parse(val, out_fmt="%m/%d/%Y"):
     """
     Parse various date formats and return a string in the given out_fmt (default MM/DD/YYYY).
     Returns empty string on invalid or blank values.
     """
     if pd.isna(val) or not str(val).strip():
         return ""
-    for fmt in ("%m/%d/%Y", "%Y-%m-%d", "%m/%d/%Y %H:%M", "%Y-%m-%d %H:%M", "%m/%d/%y"):  
+    for fmt in ("%m/%d/%Y", "%Y-%m-%d", "%m/%d/%Y %H:%M", "%Y-%m-%d %H:%M", "%m/%d/%y"):
         try:
-            dt = pd.to_datetime(val, format=fmt, errors='raise')
+            dt = pd.to_datetime(val, format=fmt, errors="raise")
             return dt.strftime(out_fmt)
         except Exception:
             continue
     try:
-        dt = pd.to_datetime(val, errors='coerce')
+        dt = pd.to_datetime(val, errors="coerce")
         if pd.isna(dt):
             return ""
         return dt.strftime(out_fmt)
@@ -81,7 +95,7 @@ def to_zoho_date(val):
         return ""
     try:
         # Handles strings like 'MM/DD/YYYY', 'YYYY-MM-DD', etc.
-        dt = pd.to_datetime(val, errors='coerce')
+        dt = pd.to_datetime(val, errors="coerce")
         if pd.isna(dt):
             return ""
         return dt.strftime("%Y-%m-%d")

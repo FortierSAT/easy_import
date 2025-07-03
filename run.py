@@ -1,7 +1,8 @@
-#run.py
+# run.py
 
 import os
-from src.web import create_app
+
+from web import create_app
 
 app = create_app()
 app.secret_key = os.environ.get("SECRET_KEY", "dev")

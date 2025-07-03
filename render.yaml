@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: easy-import-pipeline
+    env: docker
+    branch: main
+    dockerfilePath: Dockerfile
+    # With Docker, Render picks up ENTRYPOINT/CMD, so this is optional:
+    startCommand: "easy-import-pipeline --dry-run"
+    healthCheckPath: "/"

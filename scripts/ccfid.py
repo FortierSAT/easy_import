@@ -1,10 +1,12 @@
-import pandas as pd
-from sqlalchemy import create_engine, text
-import sys
 import os
+import sys
 from datetime import datetime
 
+import pandas as pd
+from sqlalchemy import create_engine, text
+
 from config import DATABASE_URL
+
 
 def main(csv_path, table_name):
     print(f"Checking if file exists: {csv_path}")
@@ -21,7 +23,7 @@ def main(csv_path, table_name):
         print(f"Loaded dataframe with shape {df.shape}")
         print("First 5 rows of your CSV:")
         print(df.head())
-        df = df.drop_duplicates(subset=['ccfid'])
+        df = df.drop_duplicates(subset=["ccfid"])
         print(f"After dropping CSV duplicates, shape is now {df.shape}")
     except Exception as e:
         print(f"ERROR: Could not read CSV: {e}")
@@ -35,8 +37,10 @@ def main(csv_path, table_name):
 
     # Filter out rows with duplicate ccfid already in DB
     original_count = len(df)
-    df = df[~df['ccfid'].isin(existing_ccfids)]
-    print(f"Filtered dataframe now has {len(df)} rows (removed {original_count - len(df)} duplicates).")
+    df = df[~df["ccfid"].isin(existing_ccfids)]
+    print(
+        f"Filtered dataframe now has {len(df)} rows (removed {original_count - len(df)} duplicates)."
+    )
 
     if df.empty:
         print("No new rows to insert. All ccfids already exist.")
@@ -44,7 +48,9 @@ def main(csv_path, table_name):
 
     # Add uploaded_timestamp column
     print("Adding uploaded_timestamp column...")
-    df["uploaded_timestamp"] = "2025-06-18 15:30:00"  # or use datetime.now() if you prefer
+    df["uploaded_timestamp"] = (
+        "2025-06-18 15:30:00"  # or use datetime.now() if you prefer
+    )
 
     print(f"About to insert this DataFrame:")
     print(df.head(10))
@@ -52,11 +58,12 @@ def main(csv_path, table_name):
 
     # Actually insert!
     try:
-        df.to_sql(table_name, engine, if_exists='append', index=False, method='multi')
+        df.to_sql(table_name, engine, if_exists="append", index=False, method="multi")
         print(f"Uploaded {len(df)} new rows to '{table_name}' successfully.")
     except Exception as e:
         print(f"ERROR: Bulk insert failed: {e}")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     print("Script started. Args:", sys.argv)

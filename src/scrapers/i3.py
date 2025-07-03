@@ -1,9 +1,11 @@
-import os
 import logging
+import os
+
 import pandas as pd
 from playwright.sync_api import sync_playwright
 from sqlalchemy import text
-from src.config import I3_USER, I3_PASS
+
+from config import I3_PASS, I3_USER
 
 # Configure module-level logger
 logger = logging.getLogger(__name__)
@@ -11,6 +13,7 @@ logger = logging.getLogger(__name__)
 DOWNLOAD_DIR = os.path.join(os.path.dirname(__file__), os.pardir, "downloads")
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 I3_CSV_PATH = os.path.join(DOWNLOAD_DIR, "i3screen_export.csv")
+
 
 def scrape_i3() -> pd.DataFrame:
     """
@@ -39,7 +42,9 @@ def scrape_i3() -> pd.DataFrame:
 
         # Navigate to Occupational Health Screening
         logger.info("Opening Occupational Health Screening section...")
-        page.get_by_role("listitem").filter(has_text="Occupational Health Screening").get_by_role("img").first.click()
+        page.get_by_role("listitem").filter(
+            has_text="Occupational Health Screening"
+        ).get_by_role("img").first.click()
 
         # Go to Completed Results
         logger.info("Clicking 'Completed Results'...")

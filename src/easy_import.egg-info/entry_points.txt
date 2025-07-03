@@ -1,0 +1,3 @@
+[console_scripts]
+easy-import-pipeline = main:main
+easy-import-web = run:app

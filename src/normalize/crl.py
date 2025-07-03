@@ -1,15 +1,17 @@
 import pandas as pd
-from src.normalize.common import (
+
+from db.session import engine
+from normalize.common import (
+    MASTER_COLUMNS,
+    map_laboratory,
+    map_reason,
+    map_regulation,
+    map_result,
+    parse_name,
     safe_date_parse,
     to_zoho_date,
-    parse_name,
-    map_reason,
-    map_result,
-    map_laboratory,
-    map_regulation,
-    MASTER_COLUMNS,
 )
-from src.db.session import engine
+
 
 def resolve_reference_id_crl(row):
     """
@@ -25,6 +27,7 @@ def resolve_reference_id_crl(row):
     if svc == "PHY":
         return f"PHY{aid}"
     return ""
+
 
 def normalize(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -55,35 +58,29 @@ def normalize(df: pd.DataFrame) -> pd.DataFrame:
     # 4) Collection date parsing + cutoff, then ISO conversion
     df["Collection_Date_raw"] = df.get("Collection Date", "")
     df["Collection_Date"] = (
-        df["Collection_Date_raw"]
-          .apply(safe_date_parse)
-          .apply(to_zoho_date)
+        df["Collection_Date_raw"].apply(safe_date_parse).apply(to_zoho_date)
     )
     df = df[df["Collection_Date"] != ""]
     cutoff = pd.to_datetime("2025-01-01")
-    df["Collection_Date_dt"] = pd.to_datetime(
-        df["Collection_Date"], errors="coerce"
-    )
+    df["Collection_Date_dt"] = pd.to_datetime(df["Collection_Date"], errors="coerce")
     df = df[df["Collection_Date_dt"] >= cutoff]
     df.drop(columns=["Collection_Date_raw", "Collection_Date_dt"], inplace=True)
 
     # 5) Other fields with ISO conversion for MRO_Received
     df["MRO_Received"] = (
-        df.get("Reviewed Date", "")
-          .apply(safe_date_parse)
-          .apply(to_zoho_date)
+        df.get("Reviewed Date", "").apply(safe_date_parse).apply(to_zoho_date)
     )
-    df["Test_Result"]  = df.get("MRO Result", "").apply(map_result)
-    df["Regulation"]   = df.get("Regulated", "").apply(map_regulation)
-    df["Test_Type"]    = df.get("Service", "")
+    df["Test_Result"] = df.get("MRO Result", "").apply(map_result)
+    df["Regulation"] = df.get("Regulated", "").apply(map_regulation)
+    df["Test_Type"] = df.get("Service", "")
     df.loc[df["Type"].astype(str).str.upper() == "PHY", "Test_Type"] = "Physical"
-    df["Test_Reason"]  = (
+    df["Test_Reason"] = (
         df.get("Reason", "Other").apply(map_reason)
-        if "Reason" in df.columns else "Other"
+        if "Reason" in df.columns
+        else "Other"
     )
-    df["Laboratory"]   = (
-        df.get("Lab Code", "").apply(map_laboratory)
-        if "Lab Code" in df.columns else ""
+    df["Laboratory"] = (
+        df.get("Lab Code", "").apply(map_laboratory) if "Lab Code" in df.columns else ""
     )
     df.loc[
         df["Test_Type"].str.lower().str.contains("poct|alcohol", na=False),
@@ -91,17 +88,12 @@ def normalize(df: pd.DataFrame) -> pd.DataFrame:
     ] = "None"
 
     # 6) Site & location
-    df["Collection_Site"]    = (
-        df.get("Site Name", "")
-          .fillna("")
-          .str.strip()
-          .str.title()
-    )
+    df["Collection_Site"] = df.get("Site Name", "").fillna("").str.strip().str.title()
     df["Collection_Site_ID"] = (
         df.get("Site ID", "")
-          .fillna("")
-          .astype(str)
-          .str.replace(r"\.0$", "", regex=True)
+        .fillna("")
+        .astype(str)
+        .str.replace(r"\.0$", "", regex=True)
     )
     df["Location"] = "None"
 
@@ -109,9 +101,11 @@ def normalize(df: pd.DataFrame) -> pd.DataFrame:
     result = df.reindex(columns=MASTER_COLUMNS, fill_value="").fillna("")
 
     # 8) Drop already-uploaded CCFIDs
-    existing = pd.read_sql(
-        "SELECT ccfid FROM uploaded_ccfid", con=engine
-    )["ccfid"].dropna().unique()
+    existing = (
+        pd.read_sql("SELECT ccfid FROM uploaded_ccfid", con=engine)["ccfid"]
+        .dropna()
+        .unique()
+    )
     result = result[~result["CCFID"].isin(existing)]
 
     # 9) Drop any duplicates in this batch

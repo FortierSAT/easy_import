@@ -1,56 +1,54 @@
 #!/usr/bin/env python3
 import argparse
-import logging
+import csv
 import datetime
+import logging
 import os
 import subprocess
-import csv
+
 import pandas as pd
 from sqlalchemy import text
 
-from src.config      import LOG_LEVEL
-from src.db.session  import SessionLocal, engine
-from src.db.models   import Base, WorklistStaging, Company, Laboratory
-from src.scrapers.crl       import scrape_crl
-from src.scrapers.i3        import scrape_i3
-from src.normalize.crl      import normalize as norm_crl
-from src.normalize.i3screen import normalize_i3screen
-from src.normalize.escreen  import normalize_escreen
-from src.utils       import is_complete
-from src.services.zoho      import push_records, sync_collection_sites_to_crm, _attach_lookup_ids
+from config import LOG_LEVEL
+from db.models import Base, Company, Laboratory, WorklistStaging
+from db.session import SessionLocal, engine
+from normalize.crl import normalize as norm_crl
+from normalize.escreen import normalize_escreen
+from normalize.i3screen import normalize_i3screen
+from scrapers.crl import scrape_crl
+from scrapers.i3 import scrape_i3
+from services.zoho import (
+    _attach_lookup_ids,
+    push_records,
+    sync_collection_sites_to_crm,
+)
+from utils import is_complete
 
-import subprocess
+SOFFICE_EXE = r"C:\Program Files\LibreOffice\program\soffice.exe"
 
-# Install Playwright browsers (Python, just in case)
-try:
-    subprocess.run(["playwright", "install", "chromium"], check=True)
-except Exception as e:
-    print("Playwright install failed:", e)
-
-# Install Chrome for Puppeteer (Node.js)
-try:
-    subprocess.run(["npx", "puppeteer", "browsers", "install", "chrome"], check=True)
-except Exception as e:
-    print("Puppeteer browser install failed:", e)
-
-# --- Config ---
+# --- Global Config & Helpers ---
 DOWNLOAD_ROOT = os.environ.get(
-    "DOWNLOAD_DIR",
-    os.path.join(os.path.dirname(__file__), "downloads")
+    "DOWNLOAD_DIR", os.path.join(os.path.dirname(__file__), "downloads")
 )
 os.makedirs(DOWNLOAD_ROOT, exist_ok=True)
 
 DOWNLOAD_PATHS = {
     "crl": os.path.join(DOWNLOAD_ROOT, "crl_summary_report.csv"),
-    "i3":  os.path.join(DOWNLOAD_ROOT, "i3screen_export.csv"),
+    "i3": os.path.join(DOWNLOAD_ROOT, "i3screen_export.csv"),
     "escreen": os.path.join(DOWNLOAD_ROOT, "DrugTestSummaryReport_Total.xlsx"),
 }
 
 SOURCES = [
-    ("crl",      scrape_crl,       norm_crl,      "crl_summary_report.csv"),
-    ("i3",       scrape_i3,        normalize_i3screen, "i3screen_export.csv"),
-    ("escreen",  "escreen_scraper", normalize_escreen, "DrugTestSummaryReport_Total.xlsx"),
+    ("crl", scrape_crl, norm_crl, "crl_summary_report.csv"),
+    ("i3", scrape_i3, normalize_i3screen, "i3screen_export.csv"),
+    (
+        "escreen",
+        "escreen_scraper",
+        normalize_escreen,
+        "DrugTestSummaryReport_Total.xlsx",
+    ),
 ]
+
 
 def escreen_scraper():
     escreen_js = os.path.join(os.path.dirname(__file__), "scrapers", "escreen.js")
@@ -58,33 +56,64 @@ def escreen_scraper():
     return DOWNLOAD_PATHS["escreen"]
 
 def convert_xlsx_to_csv(xlsx_path, output_dir):
-    """Converts XLSX to CSV using LibreOffice (soffice)."""
-    csv_path = os.path.splitext(xlsx_path)[0] + ".csv"
+    """
+    Converts XLSX → CSV via LibreOffice headless CLI.
+    Uses the full path to soffice.exe on Windows.
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    # call the full path
     subprocess.run([
-        "soffice", "--headless", "--convert-to", "csv", "--outdir", output_dir, xlsx_path
+        SOFFICE_EXE,
+        "--headless",
+        "--convert-to", "csv",
+        "--outdir", output_dir,
+        xlsx_path
     ], check=True)
+    # LibreOffice names the output <basename>.csv
+    base = os.path.splitext(os.path.basename(xlsx_path))[0]
+    csv_path = os.path.join(output_dir, f"{base}.csv")
     if not os.path.exists(csv_path):
-        raise FileNotFoundError(f"LibreOffice failed to convert {xlsx_path} to CSV.")
+        raise FileNotFoundError(f"LibreOffice failed to convert {xlsx_path}")
     return csv_path
 
 def find_escreen_header_row(csv_path):
     """Auto-detect the header row for eScreen exports."""
     with open(csv_path) as f:
         for i, row in enumerate(csv.reader(f)):
-            # Detect a header by requiring key columns to be present
             if "Donor Name" in row and "COC" in row and "Test Type" in row:
                 return i
-    # Fallback to default (row 7)
-    return 7
+    return 7  # fallback
+
 
 def parse_args():
     p = argparse.ArgumentParser(description="Run the import pipeline")
-    p.add_argument("--dry-run", action="store_true", help="Run without writing to the database or CRM")
-    p.add_argument("--skip-scrape", action="store_true", help="Skip scraping for all sources (use existing files in downloads/)")
-    p.add_argument("--skip-crl-scrape", action="store_true", help="Skip CRL scraping (use existing file)")
-    p.add_argument("--skip-i3-scrape", action="store_true", help="Skip i3Screen scraping (use existing file)")
-    p.add_argument("--skip-escreen-scrape", action="store_true", help="Skip eScreen scraping (use existing file)")
+    p.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Run without writing to the database or CRM",
+    )
+    p.add_argument(
+        "--skip-scrape",
+        action="store_true",
+        help="Skip scraping for all sources (use existing files in downloads)",
+    )
+    p.add_argument(
+        "--skip-crl-scrape",
+        action="store_true",
+        help="Skip CRL scraping (use existing file)",
+    )
+    p.add_argument(
+        "--skip-i3-scrape",
+        action="store_true",
+        help="Skip i3Screen scraping (use existing file)",
+    )
+    p.add_argument(
+        "--skip-escreen-scrape",
+        action="store_true",
+        help="Skip eScreen scraping (use existing file)",
+    )
     return p.parse_args()
+
 
 def should_skip(source, args):
     if args.skip_scrape:
@@ -97,13 +126,28 @@ def should_skip(source, args):
         return True
     return False
 
+
+# --- Main Pipeline Logic ---
 def main():
+    # 1) Parse CLI args
     args = parse_args()
     dry_run = args.dry_run
 
+    # 2) Install Playwright & Puppeteer browsers
+    try:
+        subprocess.run(["playwright", "install", "chromium"], check=True)
+    except Exception as e:
+        print("Playwright install failed:", e)
+    try:
+        subprocess.run(
+            ["npx", "puppeteer", "browsers", "install", "chrome"], check=True
+        )
+    except Exception as e:
+        print("Puppeteer browser install failed:", e)
+
+    # 3) Configure logging & database
     logging.basicConfig(
-        level=LOG_LEVEL,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+        level=LOG_LEVEL, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
     )
     logger = logging.getLogger(__name__)
     logger.info("Dry-run mode: %s", dry_run)
@@ -114,29 +158,31 @@ def main():
     now = datetime.datetime.utcnow()
     total_new = 0
 
-    # Fetch all CCFIDs already sent to Zoho
-    existing_uploaded = {row[0] for row in db.execute(text("SELECT ccfid FROM uploaded_ccfid")).all()}
-    existing_ccfids   = {r[0] for r in db.query(WorklistStaging.ccfid).all()}
+    # Fetch already uploaded and staged CCFIDs
+    existing_uploaded = {
+        row[0] for row in db.execute(text("SELECT ccfid FROM uploaded_ccfid")).all()
+    }
+    existing_ccfids = {r[0] for r in db.query(WorklistStaging.ccfid).all()}
 
+    # 4) Process each data source
     for source_name, scrape_fn, norm_fn, default_file in SOURCES:
         logger.info("=== Running %s pipeline ===", source_name)
-        clean_df = None
         skip = should_skip(source_name, args)
 
-        # --------- Load or Scrape Data ----------
+        # Load or scrape
         if source_name == "escreen":
-            # Always load XLSX → convert to CSV → detect header → normalize
             xlsx_path = DOWNLOAD_PATHS["escreen"]
             if not skip:
                 logger.info("[eScreen] Running headless browser scraper...")
                 xlsx_path = escreen_scraper()
             if not os.path.exists(xlsx_path):
-                logger.error("No XLSX file found for eScreen at %s, skipping.", xlsx_path)
+                logger.error(
+                    "No XLSX file found for eScreen at %s, skipping.", xlsx_path
+                )
                 continue
             csv_path = convert_xlsx_to_csv(xlsx_path, DOWNLOAD_ROOT)
             header_row = find_escreen_header_row(csv_path)
             raw_df = pd.read_csv(csv_path, dtype=str, header=header_row)
-            logger.info(f"eScreen: loaded with header row {header_row}, columns: {list(raw_df.columns)}")
             clean_df = norm_fn(raw_df)
         else:
             file_path = DOWNLOAD_PATHS.get(source_name)
@@ -146,16 +192,22 @@ def main():
                 clean_df = norm_fn(raw_df)
             else:
                 if not file_path or not os.path.exists(file_path):
-                    logger.error("[%s] CSV not found at %s! Skipping.", source_name.upper(), file_path)
+                    logger.error(
+                        "[%s] CSV not found at %s! Skipping.",
+                        source_name.upper(),
+                        file_path,
+                    )
                     continue
                 raw_df = pd.read_csv(file_path)
                 clean_df = norm_fn(raw_df)
             logger.info(
                 "%s: fetched %d raw rows, normalized to %d rows",
-                source_name, len(raw_df), len(clean_df)
+                source_name,
+                len(raw_df),
+                len(clean_df),
             )
 
-        # --------- Prepare Lookups -----------
+        # Prepare lookup mappings
         site_cols = ["Collection_Site", "Collection_Site_ID"]
         if all(col in clean_df.columns for col in site_cols):
             site_df = clean_df[site_cols].drop_duplicates()
@@ -172,39 +224,43 @@ def main():
             for l in db.query(Laboratory).all()
         }
 
-        # --------- Deduplication BEFORE Reporting -----------
-        # Filter out previously-uploaded CCFIDs up front!
+        # Deduplication and filtering
         all_recs = [
-            rec for rec in clean_df.to_dict(orient="records")
+            rec
+            for rec in clean_df.to_dict(orient="records")
             if rec.get("CCFID") not in existing_uploaded
         ]
         complete = [rec for rec in all_recs if is_complete(rec)]
-        staging  = [rec for rec in all_recs if not is_complete(rec)]
-        staging_new = [rec for rec in staging if rec.get("CCFID") not in existing_ccfids]
+        staging = [rec for rec in all_recs if not is_complete(rec)]
+        staging_new = [
+            rec for rec in staging if rec.get("CCFID") not in existing_ccfids
+        ]
 
         logger.info(
-            "%s: %d complete (new, not uploaded), %d incomplete (new, not staged)",
-            source_name, len(complete), len(staging_new)
+            "%s: %d complete (new), %d incomplete (new)",
+            source_name,
+            len(complete),
+            len(staging_new),
         )
 
-        # --------- Stage Incomplete -----------
+        # Stage incomplete
         FIELD_MAP = {
-            "CCFID":              "ccfid",
-            "First_Name":         "first_name",
-            "Last_Name":          "last_name",
-            "Primary_ID":         "primary_id",
-            "Company":            "company_name",
-            "Code":               "company_code",
-            "Collection_Date":    "collection_date",
-            "MRO_Received":       "mro_received",
+            "CCFID": "ccfid",
+            "First_Name": "first_name",
+            "Last_Name": "last_name",
+            "Primary_ID": "primary_id",
+            "Company": "company_name",
+            "Code": "company_code",
+            "Collection_Date": "collection_date",
+            "MRO_Received": "mro_received",
             "Collection_Site_ID": "collection_site_id",
-            "Collection_Site":    "collection_site",
-            "Laboratory":         "laboratory",
-            "Location":           "location",
-            "Test_Reason":        "test_reason",
-            "Test_Result":        "test_result",
-            "Test_Type":          "test_type",
-            "Regulation":         "regulation",
+            "Collection_Site": "collection_site",
+            "Laboratory": "laboratory",
+            "Location": "location",
+            "Test_Reason": "test_reason",
+            "Test_Result": "test_result",
+            "Test_Type": "test_type",
+            "Regulation": "regulation",
         }
         mapped = []
         for rec in staging_new:
@@ -214,12 +270,18 @@ def main():
                 if col_name in ("collection_date", "mro_received"):
                     if isinstance(val, str) and val.strip():
                         try:
-                            row[col_name] = datetime.datetime.strptime(val, "%Y-%m-%d").date()
+                            row[col_name] = datetime.datetime.strptime(
+                                val, "%Y-%m-%d"
+                            ).date()
                         except Exception:
                             try:
-                                row[col_name] = datetime.datetime.strptime(val, "%m/%d/%Y").date()
+                                row[col_name] = datetime.datetime.strptime(
+                                    val, "%m/%d/%Y"
+                                ).date()
                             except Exception:
-                                logger.warning(f"Failed to parse {col_name}='{val}' as date for CCFID {rec.get('CCFID')}")
+                                logger.warning(
+                                    f"Failed to parse {col_name}='{val}' for CCFID {rec.get('CCFID')}"
+                                )
                                 row[col_name] = None
                     else:
                         row[col_name] = None
@@ -229,51 +291,48 @@ def main():
             row["uploaded_timestamp"] = now
             mapped.append(row)
 
-        logger.info("%s: %d new records to stage (insert to WorklistStaging)", source_name, len(mapped))
+        logger.info("%s: %d new records to stage", source_name, len(mapped))
         if mapped and not dry_run:
             db.bulk_insert_mappings(WorklistStaging, mapped)
             db.commit()
-            logger.info("%s: staged %d new records.", source_name, len(mapped))
+            logger.info("%s: staged %d records", source_name, len(mapped))
 
-        # --------- Push Complete to CRM -----------
-        logger.info("%s: %d new complete rows to push to Zoho", source_name, len(complete))
+        # Push complete to Zoho
+        logger.info("%s: %d complete rows to push to Zoho", source_name, len(complete))
         if complete:
             if dry_run:
-                logger.info("[%s] [dry-run] Would push %d rows to Zoho", source_name, len(complete))
+                logger.info(
+                    "[%s] [dry-run] Would push %d rows", source_name, len(complete)
+                )
             else:
                 try:
                     payload = _attach_lookup_ids(
                         complete,
                         company_code_to_recordid,
                         site_id_to_recordid,
-                        lab_name_to_recordid
+                        lab_name_to_recordid,
                     )
-                    logger.debug("[%s] Example transformed payload: %r", source_name, payload[0] if payload else None)
                     good_ccfids = push_records(payload)
                     for ccfid in good_ccfids:
                         db.execute(
                             text(
                                 "INSERT INTO uploaded_ccfid (ccfid, uploaded_timestamp) VALUES (:ccfid, :ts)"
                             ),
-                            {"ccfid": ccfid, "ts": now}
+                            {"ccfid": ccfid, "ts": now},
                         )
                         existing_uploaded.add(ccfid)
                     db.commit()
-                    logger.info("[%s] Marked %d CCFIDs as uploaded.", source_name, len(good_ccfids))
-                    total_new += len(mapped) + len(good_ccfids)
+                    total_new += len(staging_new) + len(good_ccfids)
+                    logger.info(
+                        "[%s] marked %d uploaded", source_name, len(good_ccfids)
+                    )
                 except Exception as e:
                     db.rollback()
-                    logger.error("[%s] Bulk push failed; none marked. Error: %s", source_name, e)
+                    logger.error("[%s] push failed: %s", source_name, e)
         else:
-            logger.info("[%s] No new records to upload to Zoho.", source_name)
+            logger.info("[%s] no new records to upload", source_name)
 
-    logger.info("Done; processed a total of %d records (dry-run=%s)", total_new, dry_run)
-
-    if 'mapped' in locals():
-        logger.info(f"Staging {len(mapped)} records. Example CCFIDs: {[r.get('ccfid') for r in mapped[:5]]}")
-    else:
-        logger.info("No records staged in last batch.")
-    logger.info(f"Existing staged CCFIDs: {list(existing_ccfids)[:5]}")
+    logger.info("Done; total processed: %d records (dry-run=%s)", total_new, dry_run)
 
 
 if __name__ == "__main__":

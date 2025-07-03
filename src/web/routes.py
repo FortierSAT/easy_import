@@ -1,55 +1,59 @@
-# src/web/routes.py
+# web/routes.py
 
+import datetime
 import io
 import os
-import datetime
-import pandas as pd
-from flask import Blueprint, render_template, request, redirect, url_for, flash
-from sqlalchemy import text
 
-from src.db.session   import SessionLocal
-from src.db.models import WorklistStaging, CollectionSite, Company, Laboratory
-from src.scrapers.crl import scrape_crl
-from src.scrapers.i3  import scrape_i3
-from src.normalize.crl           import normalize as norm_crl
-from src.normalize.i3screen      import normalize_i3screen
-from src.normalize.escreen       import normalize_escreen
-from src.run_escreen import process_escreen_upload
-from src.utils        import is_complete
-from src.services.zoho import push_records, _attach_lookup_ids
+import pandas as pd
+from flask import Blueprint, flash, redirect, render_template, request, url_for
+from sqlalchemy import text
 from werkzeug.utils import secure_filename
 
+from db.models import CollectionSite, Company, Laboratory, WorklistStaging
+from db.session import SessionLocal
+from normalize.crl import normalize as norm_crl
+from normalize.escreen import normalize_escreen
+from normalize.i3screen import normalize_i3screen
+from run_escreen import process_escreen_upload
+from scrapers.crl import scrape_crl
+from scrapers.i3 import scrape_i3
+from services.zoho import _attach_lookup_ids, push_records
+from utils import is_complete
 
 bp = Blueprint("web", __name__)
+
 
 def serialize_for_json(record):
     def fix(val):
         if isinstance(val, (datetime.date, datetime.datetime)):
             return val.isoformat()
         return val
+
     return {k: fix(v) for k, v in record.items()}
+
 
 @bp.route("/")
 def index():
     # root → upload
     return redirect(url_for("web.upload_escreen"))
 
+
 @bp.route("/worklist")
 def worklist():
     """Show all unreviewed staging items."""
-    db    = SessionLocal()
+    db = SessionLocal()
     items = (
         db.query(WorklistStaging)
-          .filter_by(reviewed=False)
-          .order_by(WorklistStaging.ccfid)
-          .all()
+        .filter_by(reviewed=False)
+        .order_by(WorklistStaging.ccfid)
+        .all()
     )
     return render_template("worklist.html", items=items)
 
 
 @bp.route("/worklist/<string:ccfid>", methods=["GET", "POST"])
 def worklist_detail(ccfid):
-    db   = SessionLocal()
+    db = SessionLocal()
     item = db.get(WorklistStaging, ccfid)
     if not item:
         flash(f"Record {ccfid} not found.", "error")
@@ -58,10 +62,20 @@ def worklist_detail(ccfid):
     if request.method == "POST":
         # 1) Apply any field edits:
         editable = [
-            "company_name","company_code","first_name","last_name",
-            "collection_site","collection_site_id","location",
-            "collection_date","mro_received",
-            "laboratory","test_reason","test_type","test_result","regulation"
+            "company_name",
+            "company_code",
+            "first_name",
+            "last_name",
+            "collection_site",
+            "collection_site_id",
+            "location",
+            "collection_date",
+            "mro_received",
+            "laboratory",
+            "test_reason",
+            "test_type",
+            "test_result",
+            "regulation",
         ]
         for f in editable:
             if f in request.form:
@@ -115,7 +129,7 @@ def worklist_detail(ccfid):
             accepted = push_records(payload)
             if ccfid in accepted:
                 # Mark reviewed *now* that it really succeeded
-                item.reviewed           = True
+                item.reviewed = True
                 item.uploaded_timestamp = datetime.datetime.utcnow()
                 # Record in uploaded_ccfid
                 db.execute(
@@ -123,13 +137,16 @@ def worklist_detail(ccfid):
                         "INSERT INTO uploaded_ccfid (ccfid, uploaded_timestamp) "
                         "VALUES (:ccfid, :ts)"
                     ),
-                    {"ccfid": ccfid, "ts": item.uploaded_timestamp}
+                    {"ccfid": ccfid, "ts": item.uploaded_timestamp},
                 )
                 db.commit()
                 flash(f"{ccfid} successfully sent to CRM!", "success")
             else:
                 # Leave reviewed=False so it stays visible for retry
-                flash("Zoho did not accept the record. Check logs; it remains in your worklist.", "error")
+                flash(
+                    "Zoho did not accept the record. Check logs; it remains in your worklist.",
+                    "error",
+                )
         except Exception as e:
             flash(f"Error sending to CRM: {e}", "error")
 
@@ -137,28 +154,24 @@ def worklist_detail(ccfid):
 
     # GET: build site autocomplete data as before
     rows = (
-        db.query(
-            CollectionSite.Collection_Site,
-            CollectionSite.Collection_Site_ID
-        )
+        db.query(CollectionSite.Collection_Site, CollectionSite.Collection_Site_ID)
         .filter(CollectionSite.Collection_Site.isnot(None))
         .filter(CollectionSite.Collection_Site != "")
         .distinct()
         .order_by(CollectionSite.Collection_Site)
         .all()
     )
-    sites    = [r[0] for r in rows]
+    sites = [r[0] for r in rows]
     site_map = {r[0]: r[1] for r in rows}
 
     return render_template(
-        "worklist_detail.html",
-        item=item,
-        sites=sites,
-        site_map=site_map
+        "worklist_detail.html", item=item, sites=sites, site_map=site_map
     )
+
 
 UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
 
 @bp.route("/upload_escreen", methods=["GET", "POST"])
 def upload_escreen():

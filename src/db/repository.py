@@ -1,7 +1,10 @@
 # src/db/repository.py
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
+
 from sqlalchemy.orm import Session
-from src.db.models import WorklistStaging
+
+from db.models import WorklistStaging
+
 
 class WorklistStagingRepo:
     def __init__(self, db: Session):
@@ -15,11 +18,10 @@ class WorklistStagingRepo:
     def get_pending(self) -> List[WorklistStaging]:
         """Return all rows where reviewed=False, ordered by ccfid."""
         return (
-            self.db
-                .query(WorklistStaging)
-                .filter_by(reviewed=False)
-                .order_by(WorklistStaging.ccfid)
-                .all()
+            self.db.query(WorklistStaging)
+            .filter_by(reviewed=False)
+            .order_by(WorklistStaging.ccfid)
+            .all()
         )
 
     def get(self, ccfid: str) -> Optional[WorklistStaging]:
@@ -42,7 +44,9 @@ class WorklistStagingRepo:
 
     def mark_reviewed(self, ccfid: str) -> bool:
         """Shortcut: set reviewed=True and timestamp uploaded_timestamp."""
-        return self.update(ccfid, reviewed=True, uploaded_timestamp=datetime.datetime.utcnow())
+        return self.update(
+            ccfid, reviewed=True, uploaded_timestamp=datetime.datetime.utcnow()
+        )
 
     def clear_all(self) -> None:
         """Delete every row in staging (use with care!)."""

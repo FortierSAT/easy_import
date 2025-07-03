@@ -1,26 +1,25 @@
 import logging
-import requests
 from datetime import datetime, timedelta
+
 import pandas as pd
+import requests
 from sqlalchemy import text
 
-from src.db.session import SessionLocal
-from src.db.models  import CollectionSite
-from src.config     import (
+from config import (
+    ZOHO_API_BASE,
     ZOHO_CLIENT_ID,
     ZOHO_CLIENT_SECRET,
+    ZOHO_MODULE,
     ZOHO_REFRESH_TOKEN,
-    ZOHO_API_BASE,
-    ZOHO_MODULE
 )
+from db.models import CollectionSite
+from db.session import SessionLocal
 
 logger = logging.getLogger(__name__)
 
 # In-memory cache for the OAuth token
-_token_cache = {
-    "access_token": None,
-    "expires_at":   datetime.utcnow()
-}
+_token_cache = {"access_token": None, "expires_at": datetime.utcnow()}
+
 
 def _get_access_token() -> str:
     """
@@ -34,9 +33,9 @@ def _get_access_token() -> str:
     auth_url = "https://accounts.zoho.com/oauth/v2/token"
     payload = {
         "refresh_token": ZOHO_REFRESH_TOKEN,
-        "client_id":     ZOHO_CLIENT_ID,
+        "client_id": ZOHO_CLIENT_ID,
         "client_secret": ZOHO_CLIENT_SECRET,
-        "grant_type":    "refresh_token",
+        "grant_type": "refresh_token",
     }
 
     resp = requests.post(auth_url, data=payload)
@@ -44,17 +43,17 @@ def _get_access_token() -> str:
         logger.error("Zoho token refresh failed (%d): %s", resp.status_code, resp.text)
         resp.raise_for_status()
 
-    data    = resp.json()
-    token   = data["access_token"]
+    data = resp.json()
+    token = data["access_token"]
     expires = datetime.utcnow() + timedelta(seconds=int(data.get("expires_in", 3500)))
-    _token_cache.update({
-        "access_token": token,
-        "expires_at":   expires
-    })
+    _token_cache.update({"access_token": token, "expires_at": expires})
     logger.info("Refreshed Zoho access token; expires at %s", expires)
     return token
 
-def _attach_lookup_ids(records, crmcode_to_recordid, site_id_to_recordid, lab_name_to_id):
+
+def _attach_lookup_ids(
+    records, crmcode_to_recordid, site_id_to_recordid, lab_name_to_id
+):
     """
     Given a list of plain‐dict records (with 'CCFID', 'Code', 'Collection_Site_ID',
     'Laboratory' as strings), return a new list where:
@@ -63,8 +62,9 @@ def _attach_lookup_ids(records, crmcode_to_recordid, site_id_to_recordid, lab_na
      - All staging-only keys (CCFID, Code, Collection_Site_ID) are removed
     Strips any leading "zcrm_" from your DB values.
     """
+
     def strip_zcrm(val: str) -> str:
-        return val[len("zcrm_"):] if val.startswith("zcrm_") else val
+        return val[len("zcrm_") :] if val.startswith("zcrm_") else val
 
     out = []
     for rec in records:
@@ -101,6 +101,7 @@ def _attach_lookup_ids(records, crmcode_to_recordid, site_id_to_recordid, lab_na
         out.append(r)
     return out
 
+
 def push_records(records: list[dict]) -> list[str]:
     """
     Reads the three lookup tables out of your DB, attaches the Zoho IDs
@@ -120,8 +121,7 @@ def push_records(records: list[dict]) -> list[str]:
     }
     # collection_sites( Collection_Site_ID, Record_id )
     site_map = {
-        cs.Collection_Site_ID: cs.Record_id
-        for cs in db.query(CollectionSite).all()
+        cs.Collection_Site_ID: cs.Record_id for cs in db.query(CollectionSite).all()
     }
     # laboratories( Laboratory, Record_id )
     lab_map = {
@@ -137,10 +137,10 @@ def push_records(records: list[dict]) -> list[str]:
 
     # push
     token = _get_access_token()
-    url   = f"{ZOHO_API_BASE}/crm/v2/{ZOHO_MODULE}"
+    url = f"{ZOHO_API_BASE}/crm/v2/{ZOHO_MODULE}"
     headers = {
         "Authorization": f"Zoho-oauthtoken {token}",
-        "Content-Type":  "application/json"
+        "Content-Type": "application/json",
     }
     logger.info("Pushing %d records to Zoho…", len(batch))
     resp = requests.post(url, json={"data": batch}, headers=headers)
@@ -150,48 +150,71 @@ def push_records(records: list[dict]) -> list[str]:
     successes, failures = [], []
     for orig, result in zip(records, data):
         if result.get("status") == "success":
-            successes.append(orig["Name"])   # assumes your CCFID was in Name
+            successes.append(orig["Name"])  # assumes your CCFID was in Name
         else:
             failures.append((orig, result))
             logger.warning("Zoho rejected: %r → %r", orig, result)
 
     if failures:
-        logger.error("Zoho rejected %d records; none will be marked uploaded",
-                     len(failures))
+        logger.error(
+            "Zoho rejected %d records; none will be marked uploaded", len(failures)
+        )
     logger.info("Zoho accepted %d/%d", len(successes), len(records))
     return successes
+
 
 def add_collection_sites_to_db(new_sites: list[dict]):
     db = SessionLocal()
     for s in new_sites:
-        db.merge(CollectionSite(
-            Record_id         = s["Record_id"],
-            Collection_Site   = s["Collection_Site"],
-            Collection_Site_ID= s["Collection_Site_ID"]
-        ))
+        db.merge(
+            CollectionSite(
+                Record_id=s["Record_id"],
+                Collection_Site=s["Collection_Site"],
+                Collection_Site_ID=s["Collection_Site_ID"],
+            )
+        )
     db.commit()
     db.close()
 
+
 def sync_collection_sites_to_crm(site_df: pd.DataFrame) -> dict[str, str]:
     db = SessionLocal()
-    existing = {cs.Collection_Site_ID: cs.Record_id for cs in db.query(CollectionSite).all()}
+    existing = {
+        cs.Collection_Site_ID: cs.Record_id for cs in db.query(CollectionSite).all()
+    }
     batch_ids = set(site_df["Collection_Site_ID"])
     new_ids = batch_ids - set(existing.keys())
     to_create = [
-        {"Collection_Site": r["Collection_Site"], "Collection_Site_ID": r["Collection_Site_ID"]}
-        for _, r in site_df.iterrows() if r["Collection_Site_ID"] in new_ids
+        {
+            "Collection_Site": r["Collection_Site"],
+            "Collection_Site_ID": r["Collection_Site_ID"],
+        }
+        for _, r in site_df.iterrows()
+        if r["Collection_Site_ID"] in new_ids
     ]
     created = []
     if to_create:
         token = _get_access_token()
-        headers = {"Authorization": f"Zoho-oauthtoken {token}", "Content-Type": "application/json"}
+        headers = {
+            "Authorization": f"Zoho-oauthtoken {token}",
+            "Content-Type": "application/json",
+        }
         url = f"{ZOHO_API_BASE}/crm/v2/Collection_Sites"
         for i in range(0, len(to_create), 100):
-            batch = to_create[i:i+100]
-            resp = requests.post(url, headers=headers, json={"data": [
-                {"Name": x["Collection_Site"], "Collection_Site_ID": x["Collection_Site_ID"]}
-                for x in batch
-            ]})
+            batch = to_create[i : i + 100]
+            resp = requests.post(
+                url,
+                headers=headers,
+                json={
+                    "data": [
+                        {
+                            "Name": x["Collection_Site"],
+                            "Collection_Site_ID": x["Collection_Site_ID"],
+                        }
+                        for x in batch
+                    ]
+                },
+            )
             resp.raise_for_status()
             for req, zoho in zip(batch, resp.json().get("data", [])):
                 req["Record_id"] = zoho.get("details", {}).get("id", "")
@@ -201,6 +224,7 @@ def sync_collection_sites_to_crm(site_df: pd.DataFrame) -> dict[str, str]:
     db.close()
     return {s.Collection_Site_ID: s.Record_id for s in all_sites}
 
+
 def fetch_uploaded_ccfids():
     """
     Fetch all CCFIDs from Zoho for the given module.
@@ -209,10 +233,10 @@ def fetch_uploaded_ccfids():
     Returns a list of CCFIDs as strings.
     """
     token = _get_access_token()
-    url   = f"{ZOHO_API_BASE}/crm/v2/Results_2025"
+    url = f"{ZOHO_API_BASE}/crm/v2/Results_2025"
     headers = {
         "Authorization": f"Zoho-oauthtoken {token}",
-        "Content-Type":  "application/json"
+        "Content-Type": "application/json",
     }
 
     all_ccfids = []
@@ -223,7 +247,7 @@ def fetch_uploaded_ccfids():
         params = {
             "page": page,
             "per_page": per_page,
-            "fields": "Name"  # Only fetch Name/CCFID for efficiency
+            "fields": "Name",  # Only fetch Name/CCFID for efficiency
         }
         resp = requests.get(url, headers=headers, params=params)
         resp.raise_for_status()

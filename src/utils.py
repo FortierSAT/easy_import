@@ -1,6 +1,7 @@
 # src/utils.py
 
-from src.normalize.common import MASTER_COLUMNS
+from normalize.common import MASTER_COLUMNS
+
 
 def is_complete(record: dict) -> bool:
 
@@ -13,7 +14,10 @@ def is_complete(record: dict) -> bool:
             continue
 
         # Skip Laboratory for POCT/Alohol Breath Test
-        if col == "Laboratory" and test_type in ["POCT Urine Test", "Alcohol Breath Test"]:
+        if col == "Laboratory" and test_type in [
+            "POCT Urine Test",
+            "Alcohol Breath Test",
+        ]:
             continue
 
         # Now enforce non-empty
