@@ -24,8 +24,10 @@ from services.zoho import (
     sync_collection_sites_to_crm,
 )
 from utils import is_complete
+import shutil
 
-SOFFICE_EXE = r"C:\Program Files\LibreOffice\program\soffice.exe"
+# Try to honour an override (e.g. on Windows), otherwise fall back to the 'soffice' executable on PATH
+SOFFICE_CMD = os.environ.get("SOFFICE_EXE") or shutil.which("soffice") or "soffice"
 
 # --- Global Config & Helpers ---
 DOWNLOAD_ROOT = os.environ.get(
@@ -47,38 +49,45 @@ def escreen_scraper():
 
 
 SOURCES = [
-    ("crl",    scrape_crl,         norm_crl,           "crl_summary_report.csv"),
-    ("i3",     scrape_i3,          normalize_i3screen, "i3screen_export.csv"),
-    (
-      "escreen",
-      escreen_scraper,            normalize_escreen,   "DrugTestSummaryReport_Total.xlsx",
-    ),
+    ("crl",     scrape_crl,         norm_crl,           "crl_summary_report.csv"),
+    ("i3",      scrape_i3,          normalize_i3screen, "i3screen_export.csv"),
+    ("escreen", escreen_scraper,    normalize_escreen,  "DrugTestSummaryReport_Total.xlsx"),
 ]
+
 
 def convert_xlsx_to_csv(xlsx_path, output_dir):
     """
     Converts XLSX → CSV via LibreOffice headless CLI.
-    Uses the full path to soffice.exe on Windows.
+    Uses SOFFICE_CMD which will either be from the SOFFICE_EXE env var,
+    or the 'soffice' binary found on PATH in Docker.
     """
     import logging
+    import subprocess
 
     logger = logging.getLogger(__name__)
     os.makedirs(output_dir, exist_ok=True)
 
     try:
         subprocess.run([
-            SOFFICE_EXE,
+            SOFFICE_CMD,
             "--headless",
             "--convert-to", "csv",
             "--outdir", output_dir,
             xlsx_path
         ], check=True)
     except FileNotFoundError:
-        logger.error("LibreOffice executable not found at %s", SOFFICE_EXE)
+        logger.error("LibreOffice executable not found: %s", SOFFICE_CMD)
         raise
     except subprocess.CalledProcessError as e:
         logger.error("LibreOffice conversion failed: %s", e)
         raise
+
+    base = os.path.splitext(os.path.basename(xlsx_path))[0]
+    csv_path = os.path.join(output_dir, f"{base}.csv")
+    if not os.path.exists(csv_path):
+        raise FileNotFoundError(f"Expected CSV not found at {csv_path}")
+    return csv_path
+
 
     # LibreOffice names the output <basename>.csv
     base = os.path.splitext(os.path.basename(xlsx_path))[0]

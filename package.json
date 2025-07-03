@@ -5,6 +5,7 @@
   "private": true,
   "dependencies": {
     "dotenv": "^17.0.1",
+    "puppeteer": "24.11.2",
     "puppeteer-extra": "^3.3.4",
     "puppeteer-extra-plugin-stealth": "^2.11.1"
   }

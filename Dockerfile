@@ -23,11 +23,11 @@ COPY package*.json /app/
 RUN npm ci
 
 # 5) Copy your application code
-COPY src/            /app/src/
-COPY src/main.py     /app/main.py
-COPY src/run.py      /app/run.py
-COPY src/config.py   /app/config.py
-COPY src/utils.py    /app/utils.py
+COPY easy_import/src/   /app/src/
+COPY easy_import/src/main.py  /app/main.py
+COPY easy_import/src/run.py   /app/run.py
+COPY easy_import/src/config.py  /app/config.py
+COPY easy_import/src/utils.py   /app/utils.py
 
 # 6) Expose/entrypoints
 ENTRYPOINT ["easy-import-pipeline"]
