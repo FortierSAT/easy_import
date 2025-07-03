@@ -49,4 +49,4 @@ RUN mkdir -p /app/downloads /app/src/debug \
 
 # 7) Entrypoint
 ENTRYPOINT ["easy-import-pipeline"]
-CMD ["--help"]
+CMD []
