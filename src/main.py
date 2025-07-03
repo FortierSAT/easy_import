@@ -39,6 +39,11 @@ DOWNLOAD_PATHS = {
     "escreen": os.path.join(DOWNLOAD_ROOT, "DrugTestSummaryReport_Total.xlsx"),
 }
 
+def escreen_scraper():
+    escreen_js = os.path.join(os.path.dirname(scrapers.__file__), "escreen.js")
+    subprocess.run(["node", escreen_js], check=True)
+    return DOWNLOAD_PATHS["escreen"]
+
 SOURCES = [
     ("crl",    scrape_crl,         norm_crl,           "crl_summary_report.csv"),
     ("i3",     scrape_i3,          normalize_i3screen, "i3screen_export.csv"),
@@ -47,13 +52,6 @@ SOURCES = [
       escreen_scraper,            normalize_escreen,   "DrugTestSummaryReport_Total.xlsx",
     ),
 ]
-
-
-
-def escreen_scraper():
-    escreen_js = os.path.join(os.path.dirname(scrapers.__file__), "escreen.js")
-    subprocess.run(["node", escreen_js], check=True)
-    return DOWNLOAD_PATHS["escreen"]
 
 def convert_xlsx_to_csv(xlsx_path, output_dir):
     """
