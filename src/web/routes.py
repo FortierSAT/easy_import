@@ -9,16 +9,15 @@ from flask import Blueprint, flash, redirect, render_template, request, url_for
 from sqlalchemy import text
 from werkzeug.utils import secure_filename
 
-from db.models import CollectionSite, Company, Laboratory, WorklistStaging
-from db.session import SessionLocal
-from normalize.crl import normalize as norm_crl
-from normalize.escreen import normalize_escreen
-from normalize.i3screen import normalize_i3screen
-from run_escreen import process_escreen_upload
-from scrapers.crl import scrape_crl
-from scrapers.i3 import scrape_i3
-from services.zoho import _attach_lookup_ids, push_records
-from utils import is_complete
+from src.db.models import CollectionSite, Company, Laboratory, WorklistStaging
+from src.db.session import SessionLocal
+from src.normalize.crl import normalize as norm_crl
+from src.normalize.escreen import normalize_escreen
+from src.normalize.i3screen import normalize_i3screen
+from src.scrapers.crl import scrape_crl
+from src.scrapers.i3 import scrape_i3
+from src.services.zoho import _attach_lookup_ids, push_records
+from src.utils import is_complete
 
 bp = Blueprint("web", __name__)
 
