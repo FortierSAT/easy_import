@@ -2,7 +2,7 @@
 
 import os
 
-from web import create_app
+from src.web import create_app
 
 app = create_app()
 app.secret_key = os.environ.get("SECRET_KEY", "dev")
